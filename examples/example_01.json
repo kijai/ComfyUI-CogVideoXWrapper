@@ -1,0 +1,310 @@
+{
+  "last_node_id": 12,
+  "last_link_id": 23,
+  "nodes": [
+    {
+      "id": 11,
+      "type": "CogVideoDecode",
+      "pos": [
+        1301,
+        352
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 21
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 22
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            23
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoDecode"
+      }
+    },
+    {
+      "id": 2,
+      "type": "CogVideoEncodePrompt",
+      "pos": [
+        459,
+        485
+      ],
+      "size": [
+        408.03107827615304,
+        315.59645204258936
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "embeds",
+          "type": "COGEMBEDS",
+          "links": [
+            16
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoEncodePrompt"
+      },
+      "widgets_values": [
+        "A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over a plush, blue carpet that mimics the waves of the sea. The ship's hull is painted a rich brown, with tiny windows. The carpet, soft and textured, provides a perfect backdrop, resembling an oceanic expanse. Surrounding the ship are various other toys and children's items, hinting at a playful environment. The scene captures the innocence and imagination of childhood, with the toy ship's journey symbolizing endless adventures in a whimsical, indoor setting.",
+        ""
+      ]
+    },
+    {
+      "id": 1,
+      "type": "DownloadAndLoadCogVideoModel",
+      "pos": [
+        460,
+        354
+      ],
+      "size": {
+        "0": 315,
+        "1": 58
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            1,
+            15
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadCogVideoModel"
+      },
+      "widgets_values": [
+        "fp16"
+      ]
+    },
+    {
+      "id": 10,
+      "type": "CogVideoSampler",
+      "pos": [
+        920,
+        353
+      ],
+      "size": {
+        "0": 315,
+        "1": 246
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 15
+        },
+        {
+          "name": "embeds",
+          "type": "COGEMBEDS",
+          "link": 16
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            21
+          ],
+          "shape": 3
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            22
+          ],
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoSampler"
+      },
+      "widgets_values": [
+        480,
+        720,
+        48,
+        8,
+        30,
+        6,
+        867121661458558,
+        "fixed"
+      ]
+    },
+    {
+      "id": 12,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        1563,
+        353
+      ],
+      "size": [
+        315,
+        520.6666666666666
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 23
+        },
+        {
+          "name": "audio",
+          "type": "VHS_AUDIO",
+          "link": null
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 8,
+        "loop_count": 0,
+        "filename_prefix": "AnimateDiff",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "AnimateDiff_00003.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 8
+          }
+        }
+      }
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      15,
+      1,
+      0,
+      10,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      16,
+      2,
+      0,
+      10,
+      1,
+      "COGEMBEDS"
+    ],
+    [
+      21,
+      10,
+      0,
+      11,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      22,
+      10,
+      1,
+      11,
+      1,
+      "LATENT"
+    ],
+    [
+      23,
+      11,
+      0,
+      12,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1,
+      "offset": [
+        -281.3644522995906,
+        -67.92982606602688
+      ]
+    }
+  },
+  "version": 0.4
+}
