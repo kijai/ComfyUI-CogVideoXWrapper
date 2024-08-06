@@ -3,6 +3,7 @@ import torch
 import folder_paths
 import comfy.model_management as mm
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
+from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from .pipeline_cogvideox import CogVideoXPipeline
 
 import logging
@@ -52,8 +53,11 @@ class DownloadAndLoadCogVideoModel:
                 local_dir=base_path,
                 local_dir_use_symlinks=False,
             )
+        transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer").to(dtype).to(offload_device)
+        vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
+        scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
 
-        pipe = CogVideoXPipeline.from_pretrained(base_path, torch_dtype=dtype).to(offload_device)
+        pipe = CogVideoXPipeline(vae, transformer, scheduler)
 
         pipeline = {
             "pipe": pipe,
@@ -239,7 +243,6 @@ class CogVideoSampler:
             prompt_embeds=positive.to(dtype).to(device),
             negative_prompt_embeds=negative.to(dtype).to(device),
             generator=generator,
-            output_type="latents",
             device=device
         )
         pipe.transformer.to(offload_device)

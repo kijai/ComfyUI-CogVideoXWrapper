@@ -14,46 +14,20 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
-from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
-from diffusers.utils import BaseOutput, logging, replace_example_docstring
+from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
 
 from comfy.utils import ProgressBar
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-EXAMPLE_DOC_STRING = """
-    Examples:
-        ```python
-        >>> from diffusers import CogVideoXPipeline
-        >>> from diffusers.utils import export_to_video
-
-        >>> pipe = CogVideoXPipeline.from_pretrained("THUDM/CogVideoX-2b", torch_dtype=torch.bfloat16).to("cuda")
-        >>> prompt = (
-        ...     "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. "
-        ...     "The panda's fluffy paws strum a miniature acoustic guitar, producing soft, melodic tunes. Nearby, a few other "
-        ...     "pandas gather, watching curiously and some clapping in rhythm. Sunlight filters through the tall bamboo, "
-        ...     "casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. "
-        ...     "The background includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical "
-        ...     "atmosphere of this unique musical performance."
-        ... )
-        >>> video = pipe(
-        ...     "a polar bear dancing, high quality, realistic", guidance_scale=6, num_inference_steps=20
-        ... ).frames[0]
-        >>> export_to_video(video, "output.mp4", fps=8)
-        ```
-"""
-
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -114,22 +88,6 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-
-@dataclass
-class CogVideoXPipelineOutput(BaseOutput):
-    r"""
-    Output class for CogVideo pipelines.
-
-    Args:
-        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
-            List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
-            denoised PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
-            `(batch_size, num_frames, channels, height, width)`.
-    """
-
-    frames: torch.Tensor
-
-
 class CogVideoXPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
@@ -155,12 +113,6 @@ class CogVideoXPipeline(DiffusionPipeline):
 
     _optional_components = ["tokenizer", "text_encoder"]
     model_cpu_offload_seq = "text_encoder->transformer->vae"
-
-    _callback_tensor_inputs = [
-        "latents",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-    ]
 
     def __init__(
         self,
@@ -199,9 +151,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            # scale the initial noise by the standard deviation required by the scheduler
-            
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)            
         else:
             latents = latents.to(device)
             timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, denoise_strength, device)
@@ -219,7 +169,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                 latents = latents[:, :frames_needed, :, :, :]
 
             latents = self.scheduler.add_noise(latents, noise, latent_timestep)
-        latents = latents * self.scheduler.init_noise_sigma
+        latents = latents * self.scheduler.init_noise_sigma # scale the initial noise by the standard deviation required by the scheduler
         return latents, timesteps
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -245,19 +195,11 @@ class CogVideoXPipeline(DiffusionPipeline):
         self,
         height,
         width,
-        callback_on_step_end_tensor_inputs,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
 
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
@@ -297,7 +239,6 @@ class CogVideoXPipeline(DiffusionPipeline):
         return self._interrupt
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         height: int = 480,
@@ -314,25 +255,12 @@ class CogVideoXPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: str = "pil",
-        return_dict: bool = True,
-        callback_on_step_end: Optional[
-            Union[Callable[[int, int, Dict], None], PipelineCallback, MultiPipelineCallbacks]
-        ] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         device = torch.device("cuda"),
-    ) -> Union[CogVideoXPipelineOutput, Tuple]:
+    ):
         """
         Function invoked when calling the pipeline for generation.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
-                instead.
-            negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The height in pixels of the generated image. This is set to 1024 by default for the best results.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
@@ -371,36 +299,11 @@ class CogVideoXPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
-                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
-                of a plain tuple.
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeline class.
-
-        Examples:
-
-        Returns:
-            [`~pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipelineOutput`] or `tuple`:
-            [`~pipelines.cogvideo.pipeline_cogvideox.CogVideoXPipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
 
         assert (
             num_frames <= 48 and num_frames % fps == 0 and fps == 8
         ), f"The number of frames must be divisible by {fps=} and less than 48 frames (for now). Other values are not supported in CogVideoX."
-
-        if isinstance(callback_on_step_end, (PipelineCallback, MultiPipelineCallbacks)):
-            callback_on_step_end_tensor_inputs = callback_on_step_end.tensor_inputs
 
         height = height or self.transformer.config.sample_size * self.vae_scale_factor_spatial
         width = width or self.transformer.config.sample_size * self.vae_scale_factor_spatial
@@ -410,7 +313,6 @@ class CogVideoXPipeline(DiffusionPipeline):
         self.check_inputs(
             height,
             width,
-            callback_on_step_end_tensor_inputs,
             prompt_embeds,
             negative_prompt_embeds,
         )
@@ -502,17 +404,6 @@ class CogVideoXPipeline(DiffusionPipeline):
                         return_dict=False,
                     )
                 latents = latents.to(prompt_embeds.dtype)
-
-                # call the callback, if provided
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
