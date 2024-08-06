@@ -122,21 +122,82 @@ class CogVideoTextEncode:
         embeds = clip.encode_from_tokens(tokens, return_pooled=False, return_dict=False)
 
         return (embeds, )
-
-class CogVideoSampler:
+    
+class CogVideoImageEncode:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {
             "pipeline": ("COGVIDEOPIPE",),
-            "positive": ("CONDITIONING", ),
-            "negative": ("CONDITIONING", ),
-            "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
-            "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
-            "num_frames": ("INT", {"default": 48, "min": 8, "max": 100, "step": 8}),
-            "fps": ("INT", {"default": 8, "min": 1, "max": 100, "step": 1}),
-            "steps": ("INT", {"default": 25, "min": 1}),
-            "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
-            "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            "image": ("IMAGE", ),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("samples",)
+    FUNCTION = "encode"
+    CATEGORY = "CogVideoWrapper"
+
+    def encode(self, pipeline, image):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        generator = torch.Generator(device=device).manual_seed(0)
+        vae = pipeline["pipe"].vae
+        vae.to(device)
+  
+        image = image * 2.0 - 1.0
+        image = image.to(vae.dtype).to(device)
+        image = image.unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
+        B, C, T, H, W = image.shape
+        chunk_size = 16
+        latents_list = []
+        # Loop through the temporal dimension in chunks of 16
+        for i in range(0, T, chunk_size):
+            # Get the chunk of 16 frames (or remaining frames if less than 16 are left)
+            end_index = min(i + chunk_size, T)
+            image_chunk = image[:, :, i:end_index, :, :]  # Shape: [B, C, chunk_size, H, W]
+
+            # Encode the chunk of images
+            latents = vae.encode(image_chunk)
+
+            sample_mode = "sample"
+            if hasattr(latents, "latent_dist") and sample_mode == "sample":
+                latents = latents.latent_dist.sample(generator)
+            elif hasattr(latents, "latent_dist") and sample_mode == "argmax":
+                latents = latents.latent_dist.mode()
+            elif hasattr(latents, "latents"):
+                latents = latents.latents
+
+            latents = vae.config.scaling_factor * latents
+            latents = latents.permute(0, 2, 1, 3, 4)  # B, T_chunk, C, H, W
+            latents_list.append(latents)
+
+        # Concatenate all the chunks along the temporal dimension
+        final_latents = torch.cat(latents_list, dim=1)
+        print("final latents: ", final_latents.shape)
+        
+        vae.to(offload_device)
+        
+        return ({"samples": final_latents}, )
+
+class CogVideoSampler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("COGVIDEOPIPE",),
+                "positive": ("CONDITIONING", ),
+                "negative": ("CONDITIONING", ),
+                "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
+                "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
+                "num_frames": ("INT", {"default": 48, "min": 8, "max": 100, "step": 8}),
+                "fps": ("INT", {"default": 8, "min": 1, "max": 100, "step": 1}),
+                "steps": ("INT", {"default": 25, "min": 1}),
+                "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
+                "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+            },
+            "optional": {
+                "samples": ("LATENT", ),
+                "denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             }
         }
 
@@ -145,7 +206,7 @@ class CogVideoSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, fps, steps, cfg, seed, height, width, num_frames):
+    def process(self, pipeline, positive, negative, fps, steps, cfg, seed, height, width, num_frames, samples=None, denoise_strength=1.0):
         mm.soft_empty_cache()
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
@@ -162,6 +223,8 @@ class CogVideoSampler:
             num_frames = num_frames,
             fps = fps,
             guidance_scale=cfg,
+            latents=samples["samples"] if samples is not None else None,
+            denoise_strength=denoise_strength,
             prompt_embeds=positive.to(dtype).to(device),
             negative_prompt_embeds=negative.to(dtype).to(device),
             #negative_prompt_embeds=torch.zeros_like(embeds),
@@ -198,11 +261,15 @@ class CogVideoDecode:
         vae = pipeline["pipe"].vae
         vae.to(device)
 
-        num_frames = pipeline["num_frames"]
-        fps = pipeline["fps"]
+        if "num_frames" in pipeline:
+            num_frames = pipeline["num_frames"]
+            fps = pipeline["fps"]
 
+            
+        else:
+            num_frames = latents.shape[2]
+            fps = 8
         num_seconds = num_frames // fps
-        
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / vae.config.scaling_factor * latents
 
@@ -217,6 +284,7 @@ class CogVideoDecode:
         vae.to(offload_device)
 
         frames = torch.cat(frames, dim=2)
+        print(frames.min(), frames.max())
         video = pipeline["pipe"].video_processor.postprocess_video(video=frames, output_type="pt")
         print(video.shape)
         video = video[0].permute(0, 2, 3, 1).cpu().float()
@@ -229,11 +297,13 @@ NODE_CLASS_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": DownloadAndLoadCogVideoModel,
     "CogVideoSampler": CogVideoSampler,
     "CogVideoDecode": CogVideoDecode,
-    "CogVideoTextEncode": CogVideoTextEncode
+    "CogVideoTextEncode": CogVideoTextEncode,
+    "CogVideoImageEncode": CogVideoImageEncode
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
     "CogVideoSampler": "CogVideo Sampler",
     "CogVideoDecode": "CogVideo Decode",
-    "CogVideoTextEncode": "CogVideo TextEncode"
+    "CogVideoTextEncode": "CogVideo TextEncode",
+    "CogVideoImageEncode": "CogVideo ImageEncode"
     }
