@@ -1,145 +1,37 @@
 {
-  "last_node_id": 12,
-  "last_link_id": 23,
+  "last_node_id": 31,
+  "last_link_id": 57,
   "nodes": [
     {
-      "id": 11,
-      "type": "CogVideoDecode",
-      "pos": [
-        1301,
-        352
-      ],
-      "size": {
-        "0": 210,
-        "1": 46
-      },
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 21
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 22
-        }
-      ],
-      "outputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            23
-          ],
-          "shape": 3,
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CogVideoDecode"
-      }
-    },
-    {
-      "id": 2,
-      "type": "CogVideoEncodePrompt",
-      "pos": [
-        459,
-        485
-      ],
-      "size": [
-        408.03107827615304,
-        315.59645204258936
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 1
-        }
-      ],
-      "outputs": [
-        {
-          "name": "embeds",
-          "type": "COGEMBEDS",
-          "links": [
-            16
-          ],
-          "shape": 3,
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CogVideoEncodePrompt"
-      },
-      "widgets_values": [
-        "A detailed wooden toy ship with intricately carved masts and sails is seen gliding smoothly over a plush, blue carpet that mimics the waves of the sea. The ship's hull is painted a rich brown, with tiny windows. The carpet, soft and textured, provides a perfect backdrop, resembling an oceanic expanse. Surrounding the ship are various other toys and children's items, hinting at a playful environment. The scene captures the innocence and imagination of childhood, with the toy ship's journey symbolizing endless adventures in a whimsical, indoor setting.",
-        ""
-      ]
-    },
-    {
-      "id": 1,
-      "type": "DownloadAndLoadCogVideoModel",
-      "pos": [
-        460,
-        354
-      ],
-      "size": {
-        "0": 315,
-        "1": 58
-      },
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "outputs": [
-        {
-          "name": "cogvideo_pipe",
-          "type": "COGVIDEOPIPE",
-          "links": [
-            1,
-            15
-          ],
-          "shape": 3,
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "DownloadAndLoadCogVideoModel"
-      },
-      "widgets_values": [
-        "fp16"
-      ]
-    },
-    {
-      "id": 10,
+      "id": 22,
       "type": "CogVideoSampler",
       "pos": [
-        920,
-        353
+        1041,
+        342
       ],
       "size": {
         "0": 315,
-        "1": 246
+        "1": 266
       },
       "flags": {},
-      "order": 2,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
           "name": "pipeline",
           "type": "COGVIDEOPIPE",
-          "link": 15
+          "link": 36
         },
         {
-          "name": "embeds",
-          "type": "COGEMBEDS",
-          "link": 16
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 55,
+          "slot_index": 1
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 57
         }
       ],
       "outputs": [
@@ -147,7 +39,7 @@
           "name": "cogvideo_pipe",
           "type": "COGVIDEOPIPE",
           "links": [
-            21
+            37
           ],
           "shape": 3
         },
@@ -155,7 +47,7 @@
           "name": "samples",
           "type": "LATENT",
           "links": [
-            22
+            38
           ],
           "shape": 3
         }
@@ -166,33 +58,75 @@
       "widgets_values": [
         480,
         720,
-        48,
+        16,
         8,
-        30,
+        25,
         6,
-        867121661458558,
+        806286757407561,
         "fixed"
       ]
     },
     {
-      "id": 12,
+      "id": 11,
+      "type": "CogVideoDecode",
+      "pos": [
+        1142,
+        658
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 37
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 38
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            51
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoDecode"
+      }
+    },
+    {
+      "id": 28,
       "type": "VHS_VideoCombine",
       "pos": [
-        1563,
-        353
+        1432,
+        150
       ],
       "size": [
-        315,
-        520.6666666666666
+        667.752197265625,
+        755.8347981770833
       ],
       "flags": {},
-      "order": 4,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 23
+          "link": 51,
+          "slot_index": 0
         },
         {
           "name": "audio",
@@ -235,7 +169,7 @@
           "hidden": false,
           "paused": false,
           "params": {
-            "filename": "AnimateDiff_00003.mp4",
+            "filename": "AnimateDiff_00001.mp4",
             "subfolder": "",
             "type": "temp",
             "format": "video/h264-mp4",
@@ -243,66 +177,226 @@
           }
         }
       }
+    },
+    {
+      "id": 30,
+      "type": "CogVideoTextEncode",
+      "pos": [
+        500,
+        308
+      ],
+      "size": [
+        474.84501511852204,
+        164.74235966960538
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 54
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            55
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoTextEncode"
+      },
+      "widgets_values": [
+        "A panda, dressed in a small, red jacket and a tiny hat, sits on a wooden stool in a serene bamboo forest. The panda's fluffy paws strum a miniature\nacoustic guitar, producing soft, melodic tunes. Nearby, a few other pandas gather, watching curiously and some clapping in rhythm. Sunlight filters\nthrough the tall bamboo, casting a gentle glow on the scene. The panda's face is expressive, showing concentration and joy as it plays. The\nbackground includes a small, flowing stream and vibrant green foliage, enhancing the peaceful and magical atmosphere of this unique musical\nperformance."
+      ]
+    },
+    {
+      "id": 20,
+      "type": "CLIPLoader",
+      "pos": [
+        -59,
+        397
+      ],
+      "size": {
+        "0": 451.30548095703125,
+        "1": 82
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            54,
+            56
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "t5\\google_t5-v1_1-xxl_encoderonly-fp8_e4m3fn.safetensors",
+        "sd3"
+      ]
+    },
+    {
+      "id": 31,
+      "type": "CogVideoTextEncode",
+      "pos": [
+        503,
+        521
+      ],
+      "size": [
+        463.01251866466464,
+        98.10446321574796
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 56
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            57
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoTextEncode"
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 1,
+      "type": "DownloadAndLoadCogVideoModel",
+      "pos": [
+        649,
+        182
+      ],
+      "size": {
+        "0": 315,
+        "1": 58
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            36
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadCogVideoModel"
+      },
+      "widgets_values": [
+        "fp16"
+      ]
     }
   ],
   "links": [
     [
-      1,
+      36,
       1,
       0,
-      2,
+      22,
       0,
       "COGVIDEOPIPE"
     ],
     [
-      15,
-      1,
-      0,
-      10,
-      0,
-      "COGVIDEOPIPE"
-    ],
-    [
-      16,
-      2,
-      0,
-      10,
-      1,
-      "COGEMBEDS"
-    ],
-    [
-      21,
-      10,
+      37,
+      22,
       0,
       11,
       0,
       "COGVIDEOPIPE"
     ],
     [
+      38,
       22,
-      10,
       1,
       11,
       1,
       "LATENT"
     ],
     [
-      23,
+      51,
       11,
       0,
-      12,
+      28,
       0,
       "IMAGE"
+    ],
+    [
+      54,
+      20,
+      0,
+      30,
+      0,
+      "CLIP"
+    ],
+    [
+      55,
+      30,
+      0,
+      22,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      56,
+      20,
+      0,
+      31,
+      0,
+      "CLIP"
+    ],
+    [
+      57,
+      31,
+      0,
+      22,
+      2,
+      "CONDITIONING"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 1,
+      "scale": 0.6830134553650706,
       "offset": [
-        -281.3644522995906,
-        -67.92982606602688
+        359.4381777891929,
+        334.95283678425216
       ]
     }
   },

@@ -48,12 +48,13 @@ class DownloadAndLoadCogVideoModel:
 
             snapshot_download(
                 repo_id="THUDM/CogVideoX-2b",
-                #ignore_patterns=["*sd-image-variations-encoder-fp16.safetensors", "fye_motion_module-fp16.safetensors"],
+                ignore_patterns=["*text_encoder*"],
                 local_dir=base_path,
                 local_dir_use_symlinks=False,
             )
 
         pipe = CogVideoXPipeline.from_pretrained(base_path, torch_dtype=dtype).to(offload_device)
+        
 
         pipeline = {
             "pipe": pipe,
@@ -72,8 +73,8 @@ class CogVideoEncodePrompt:
             }
         }
 
-    RETURN_TYPES = ("COGEMBEDS",)
-    RETURN_NAMES = ("embeds",)
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING")
+    RETURN_NAMES = ("positive", "negative")
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
@@ -86,7 +87,7 @@ class CogVideoEncodePrompt:
         pipe.text_encoder.to(device)
         pipe.transformer.to(offload_device)
         
-        pos_embeds, neg_embeds = pipe.encode_prompt(
+        positive, negative = pipe.encode_prompt(
             prompt=prompt,
             negative_prompt=negative_prompt,
             do_classifier_free_guidance=True,
@@ -96,10 +97,29 @@ class CogVideoEncodePrompt:
             dtype=dtype,
         )
         pipe.text_encoder.to(offload_device)
-        embeds = {
-            "positive": pos_embeds,
-            "negative": neg_embeds,
+
+        return (positive, negative)
+    
+class CogVideoTextEncode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "clip": ("CLIP",),
+            "prompt": ("STRING", {"default": "", "multiline": True} ),
+            }
         }
+
+    RETURN_TYPES = ("CONDITIONING",)
+    RETURN_NAMES = ("conditioning",)
+    FUNCTION = "process"
+    CATEGORY = "CogVideoWrapper"
+
+    def process(self, clip, prompt):
+        clip.tokenizer.t5xxl.pad_to_max_length = True
+        clip.tokenizer.t5xxl.max_length = 226
+        tokens = clip.tokenize(prompt, return_word_ids=True)
+
+        embeds = clip.encode_from_tokens(tokens, return_pooled=False, return_dict=False)
 
         return (embeds, )
 
@@ -108,7 +128,8 @@ class CogVideoSampler:
     def INPUT_TYPES(s):
         return {"required": {
             "pipeline": ("COGVIDEOPIPE",),
-            "embeds": ("COGEMBEDS", ),
+            "positive": ("CONDITIONING", ),
+            "negative": ("CONDITIONING", ),
             "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
             "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
             "num_frames": ("INT", {"default": 48, "min": 1, "max": 100, "step": 1}),
@@ -124,11 +145,12 @@ class CogVideoSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, embeds, fps, steps, cfg, seed, height, width, num_frames):
+    def process(self, pipeline, positive, negative, fps, steps, cfg, seed, height, width, num_frames):
         mm.soft_empty_cache()
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
+        dtype = pipeline["dtype"]
 
         pipe.transformer.to(device)
         generator = torch.Generator(device=device).manual_seed(seed)
@@ -140,8 +162,8 @@ class CogVideoSampler:
             num_frames = num_frames,
             fps = fps,
             guidance_scale=cfg,
-            prompt_embeds=embeds["positive"],
-            negative_prompt_embeds=embeds["negative"],
+            prompt_embeds=positive.to(dtype).to(device),
+            negative_prompt_embeds=negative.to(dtype).to(device),
             #negative_prompt_embeds=torch.zeros_like(embeds),
             generator=generator,
             output_type="latents",
@@ -206,12 +228,12 @@ class CogVideoDecode:
 NODE_CLASS_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": DownloadAndLoadCogVideoModel,
     "CogVideoSampler": CogVideoSampler,
-    "CogVideoEncodePrompt": CogVideoEncodePrompt,
-    "CogVideoDecode": CogVideoDecode
+    "CogVideoDecode": CogVideoDecode,
+    "CogVideoTextEncode": CogVideoTextEncode
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "DownloadAndLoadCogVideoModel": "DownloadAndLoadCogVideoModel",
+    "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
     "CogVideoSampler": "CogVideo Sampler",
-    "CogVideoEncodePrompt": "CogVideo EncodePrompt",
     "CogVideoDecode": "CogVideo Decode",
+    "CogVideoTextEncode": "CogVideo TextEncode"
     }
