@@ -2,7 +2,7 @@ import os
 import torch
 import folder_paths
 import comfy.model_management as mm
-
+from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from .pipeline_cogvideox import CogVideoXPipeline
 
 import logging
@@ -54,11 +54,11 @@ class DownloadAndLoadCogVideoModel:
             )
 
         pipe = CogVideoXPipeline.from_pretrained(base_path, torch_dtype=dtype).to(offload_device)
-        
 
         pipeline = {
             "pipe": pipe,
-            "dtype": dtype
+            "dtype": dtype,
+            "base_path": base_path
         }
 
         return (pipeline,)
@@ -115,11 +115,15 @@ class CogVideoTextEncode:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, clip, prompt):
+        load_device = mm.text_encoder_device()
+        offload_device = mm.text_encoder_offload_device()
         clip.tokenizer.t5xxl.pad_to_max_length = True
         clip.tokenizer.t5xxl.max_length = 226
+        clip.cond_stage_model.to(load_device)
         tokens = clip.tokenize(prompt, return_word_ids=True)
 
         embeds = clip.encode_from_tokens(tokens, return_pooled=False, return_dict=False)
+        clip.cond_stage_model.to(offload_device)
 
         return (embeds, )
     
@@ -194,6 +198,7 @@ class CogVideoSampler:
                 "steps": ("INT", {"default": 25, "min": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
+                "scheduler": (["DDIM", "DPM"],),
             },
             "optional": {
                 "samples": ("LATENT", ),
@@ -206,15 +211,21 @@ class CogVideoSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, fps, steps, cfg, seed, height, width, num_frames, samples=None, denoise_strength=1.0):
+    def process(self, pipeline, positive, negative, fps, steps, cfg, seed, height, width, num_frames, scheduler, samples=None, denoise_strength=1.0):
         mm.soft_empty_cache()
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
         dtype = pipeline["dtype"]
+        base_path = pipeline["base_path"]
 
         pipe.transformer.to(device)
         generator = torch.Generator(device=device).manual_seed(seed)
+
+        if scheduler == "DDIM":
+            pipe.scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
+        elif scheduler == "DPM":
+            pipe.scheduler = CogVideoXDPMScheduler.from_pretrained(base_path, subfolder="scheduler")
 
         latents = pipeline["pipe"](
             num_inference_steps=steps,
@@ -227,7 +238,6 @@ class CogVideoSampler:
             denoise_strength=denoise_strength,
             prompt_embeds=positive.to(dtype).to(device),
             negative_prompt_embeds=negative.to(dtype).to(device),
-            #negative_prompt_embeds=torch.zeros_like(embeds),
             generator=generator,
             output_type="latents",
             device=device
@@ -264,11 +274,10 @@ class CogVideoDecode:
         if "num_frames" in pipeline:
             num_frames = pipeline["num_frames"]
             fps = pipeline["fps"]
-
-            
         else:
             num_frames = latents.shape[2]
             fps = 8
+
         num_seconds = num_frames // fps
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / vae.config.scaling_factor * latents
@@ -278,17 +287,14 @@ class CogVideoDecode:
             # Whether or not to clear fake context parallel cache
             fake_cp = i + 1 < num_seconds
             start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
-
             current_frames = vae.decode(latents[:, :, start_frame:end_frame], fake_cp=fake_cp).sample
             frames.append(current_frames)
+            mm.soft_empty_cache()
         vae.to(offload_device)
 
         frames = torch.cat(frames, dim=2)
-        print(frames.min(), frames.max())
         video = pipeline["pipe"].video_processor.postprocess_video(video=frames, output_type="pt")
-        print(video.shape)
         video = video[0].permute(0, 2, 3, 1).cpu().float()
-        print(video.min(), video.max())
 
         return (video,)
 

@@ -11,7 +11,7 @@
       ],
       "size": {
         "0": 315,
-        "1": 266
+        "1": 334
       },
       "flags": {},
       "order": 4,
@@ -32,6 +32,11 @@
           "name": "negative",
           "type": "CONDITIONING",
           "link": 57
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": null
         }
       ],
       "outputs": [
@@ -63,49 +68,10 @@
         25,
         6,
         806286757407561,
-        "fixed"
+        "fixed",
+        "DDIM",
+        1
       ]
-    },
-    {
-      "id": 11,
-      "type": "CogVideoDecode",
-      "pos": [
-        1142,
-        658
-      ],
-      "size": {
-        "0": 210,
-        "1": 46
-      },
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 37
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 38
-        }
-      ],
-      "outputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            51
-          ],
-          "shape": 3,
-          "slot_index": 0
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CogVideoDecode"
-      }
     },
     {
       "id": 28,
@@ -169,7 +135,7 @@
           "hidden": false,
           "paused": false,
           "params": {
-            "filename": "AnimateDiff_00001.mp4",
+            "filename": "CogVideoX_00001.mp4",
             "subfolder": "",
             "type": "temp",
             "format": "video/h264-mp4",
@@ -185,10 +151,10 @@
         500,
         308
       ],
-      "size": [
-        474.84501511852204,
-        164.74235966960538
-      ],
+      "size": {
+        "0": 474.8450012207031,
+        "1": 164.7423553466797
+      },
       "flags": {},
       "order": 2,
       "mode": 0,
@@ -258,10 +224,10 @@
         503,
         521
       ],
-      "size": [
-        463.01251866466464,
-        98.10446321574796
-      ],
+      "size": {
+        "0": 463.01251220703125,
+        "1": 98.10446166992188
+      },
       "flags": {},
       "order": 3,
       "mode": 0,
@@ -321,6 +287,47 @@
       "widgets_values": [
         "fp16"
       ]
+    },
+    {
+      "id": 11,
+      "type": "CogVideoDecode",
+      "pos": [
+        1138,
+        725
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 37
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 38
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            51
+          ],
+          "shape": 3,
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoDecode"
+      }
     }
   ],
   "links": [
@@ -393,10 +400,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.6830134553650706,
+      "scale": 0.9090909090909092,
       "offset": [
-        359.4381777891929,
-        334.95283678425216
+        12.99028921497383,
+        38.21608107136124
       ]
     }
   },
