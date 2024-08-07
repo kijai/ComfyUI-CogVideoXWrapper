@@ -2,6 +2,7 @@ import os
 import torch
 import folder_paths
 import comfy.model_management as mm
+from comfy.utils import ProgressBar
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from .pipeline_cogvideox import CogVideoXPipeline
@@ -24,7 +25,7 @@ class DownloadAndLoadCogVideoModel:
                         "fp32",
                         "bf16",
                     ],
-                    {"default": "fp16"},
+                    {"default": "bf16"},
                 ),
             },
         }
@@ -286,14 +287,16 @@ class CogVideoDecode:
         latents = 1 / vae.config.scaling_factor * latents
 
         frames = []
+        pbar = ProgressBar(num_seconds)
         for i in range(num_seconds):
-            # Whether or not to clear fake context parallel cache
-            fake_cp = i + 1 < num_seconds
             start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
-            current_frames = vae.decode(latents[:, :, start_frame:end_frame], fake_cp=fake_cp).sample
+            current_frames = vae.decode(latents[:, :, start_frame:end_frame]).sample
             frames.append(current_frames)
-            mm.soft_empty_cache()
+            
+            pbar.update(1)
+        vae.clear_fake_context_parallel_cache()
         vae.to(offload_device)
+        mm.soft_empty_cache()
 
         frames = torch.cat(frames, dim=2)
         video = pipeline["pipe"].video_processor.postprocess_video(video=frames, output_type="pt")

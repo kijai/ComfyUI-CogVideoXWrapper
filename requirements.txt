@@ -1,2 +1,2 @@
 huggingface_hub
-git+https://github.com/huggingface/diffusers.git@878f609aa5ce4a78fea0f048726889debde1d7e8#egg=diffusers
+diffusers>=0.30.0

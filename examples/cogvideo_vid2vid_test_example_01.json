@@ -130,7 +130,7 @@
         "Node name for S&R": "CogVideoTextEncode"
       },
       "widgets_values": [
-        "bad quality video, blurry, messy"
+        ""
       ]
     },
     {
@@ -163,7 +163,7 @@
         "Node name for S&R": "DownloadAndLoadCogVideoModel"
       },
       "widgets_values": [
-        "fp16"
+        "bf16"
       ]
     },
     {
