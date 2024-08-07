@@ -218,6 +218,16 @@ class CogVideoXPipeline(DiffusionPipeline):
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps.to(device), num_inference_steps - t_start
+    
+    def _gaussian_weights(self, t_tile_length, t_batch_size):
+        from numpy import pi, exp, sqrt
+
+        var = 0.01
+        midpoint = (t_tile_length - 1) / 2  # -1 because index goes from 0 to latent_width - 1
+        t_probs = [exp(-(t-midpoint)*(t-midpoint)/(t_tile_length*t_tile_length)/(2*var)) / sqrt(2*pi*var) for t in range(t_tile_length)]
+        weights = torch.tensor(t_probs)
+        weights = weights.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4).repeat(1, t_batch_size,1, 1, 1)
+        return weights
 
     @property
     def guidance_scale(self):
@@ -244,6 +254,8 @@ class CogVideoXPipeline(DiffusionPipeline):
         height: int = 480,
         width: int = 720,
         num_frames: int = 48,
+        t_tile_length: int = 12,
+        t_tile_overlap: int = 4,
         fps: int = 8,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
@@ -301,9 +313,9 @@ class CogVideoXPipeline(DiffusionPipeline):
                 argument.
         """
 
-        assert (
-            num_frames <= 48 and num_frames % fps == 0 and fps == 8
-        ), f"The number of frames must be divisible by {fps=} and less than 48 frames (for now). Other values are not supported in CogVideoX."
+        #assert (
+        #    num_frames <= 48 and num_frames % fps == 0 and fps == 8
+        #), f"The number of frames must be divisible by {fps=} and less than 48 frames (for now). Other values are not supported in CogVideoX."
 
         height = height or self.transformer.config.sample_size * self.vae_scale_factor_spatial
         width = width or self.transformer.config.sample_size * self.vae_scale_factor_spatial
@@ -337,7 +349,10 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
-        num_frames += 1
+
+        if latents is None and num_frames == t_tile_length:
+            num_frames += 1
+
         latents, timesteps = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             latent_channels,
@@ -356,6 +371,9 @@ class CogVideoXPipeline(DiffusionPipeline):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        t_tile_weights = self._gaussian_weights(t_tile_length=t_tile_length, t_batch_size=1).to(latents.device).to(latents.dtype)
+        print("latents.shape", latents.shape)
+        print("latents.device", latents.device)
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         comfy_pbar = ProgressBar(num_inference_steps)
@@ -365,45 +383,90 @@ class CogVideoXPipeline(DiffusionPipeline):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+                
+                #temporal tiling code based on https://github.com/mayuelala/FollowYourEmoji/blob/main/models/video_pipeline.py
+                # =====================================================
+                grid_ts = 0
+                cur_t = 0
+                while cur_t < latents.shape[1]:
+                    cur_t = max(grid_ts * t_tile_length - t_tile_overlap * grid_ts, 0) + t_tile_length
+                    grid_ts += 1
 
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                all_t = latents.shape[1]
+                latents_all_list = []
+                # =====================================================
 
-                # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                timestep = t.expand(latent_model_input.shape[0])
+                for t_i in range(grid_ts):
+                    if t_i < grid_ts - 1:
+                        ofs_t = max(t_i * t_tile_length - t_tile_overlap * t_i, 0)
+                    if t_i == grid_ts - 1:
+                        ofs_t = all_t - t_tile_length
 
-                # predict noise model_output
-                noise_pred = self.transformer(
-                    hidden_states=latent_model_input,
-                    encoder_hidden_states=prompt_embeds,
-                    timestep=timestep,
-                    return_dict=False,
-                )[0]
-                noise_pred = noise_pred.float()
+                    input_start_t = ofs_t
+                    input_end_t = ofs_t + t_tile_length
 
-                # perform guidance
-                # self._guidance_scale = 1 + guidance_scale * (
-                #     (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
-                # )
-                # print(self._guidance_scale)
-                if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    #latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                    #latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                if not isinstance(self.scheduler, CogVideoXDPMScheduler):
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-                else:
-                    latents, old_pred_original_sample = self.scheduler.step(
-                        noise_pred,
-                        old_pred_original_sample,
-                        t,
-                        timesteps[i - 1] if i > 0 else None,
-                        latents,
-                        **extra_step_kwargs,
+                    latents_tile = latents[:, input_start_t:input_end_t,:, :, :]
+                    latent_model_input_tile = torch.cat([latents_tile] * 2) if do_classifier_free_guidance else latents_tile
+                    latent_model_input_tile = self.scheduler.scale_model_input(latent_model_input_tile, t)
+
+                    #t_input = t[None].to(device)
+                    t_input = t.expand(latent_model_input_tile.shape[0]) # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+            
+                    # predict noise model_output
+                    noise_pred = self.transformer(
+                        hidden_states=latent_model_input_tile,
+                        encoder_hidden_states=prompt_embeds,
+                        timestep=t_input,
                         return_dict=False,
-                    )
-                latents = latents.to(prompt_embeds.dtype)
+                    )[0]
+                    noise_pred = noise_pred.float()                  
+
+                    if self.do_classifier_free_guidance:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                    # compute the previous noisy sample x_t -> x_t-1
+                    if not isinstance(self.scheduler, CogVideoXDPMScheduler):
+                        latents_tile = self.scheduler.step(noise_pred, t, latents_tile, **extra_step_kwargs, return_dict=False)[0]
+                    else:
+                        raise NotImplementedError("DPM is not supported with temporal tiling")
+                    # else:
+                    #     latents_tile, old_pred_original_sample = self.scheduler.step(
+                    #         noise_pred,
+                    #         old_pred_original_sample,
+                    #         t,
+                    #         t_input[t_i - 1] if t_i > 0 else None,
+                    #         latents_tile,
+                    #         **extra_step_kwargs,
+                    #         return_dict=False,
+                    #     )
+        
+                    latents_all_list.append(latents_tile)
+
+                # ==========================================
+                latents_all = torch.zeros(latents.shape, device=latents.device, dtype=latents.dtype)
+                contributors = torch.zeros(latents.shape, device=latents.device, dtype=latents.dtype)
+                # Add each tile contribution to overall latents
+                for t_i in range(grid_ts):
+                    if t_i < grid_ts - 1:
+                        ofs_t = max(t_i * t_tile_length - t_tile_overlap * t_i, 0)
+                    if t_i == grid_ts - 1:
+                        ofs_t = all_t - t_tile_length
+
+                    input_start_t = ofs_t
+                    input_end_t = ofs_t + t_tile_length
+
+                    latents_all[:, input_start_t:input_end_t,:, :, :] += latents_all_list[t_i] * t_tile_weights
+                    contributors[:, input_start_t:input_end_t,:, :, :] += t_tile_weights
+                
+                latents_all /= contributors
+
+                latents = latents_all
+                # ==========================================
+
 
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()

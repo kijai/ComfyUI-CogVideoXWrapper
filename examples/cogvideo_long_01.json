@@ -1,78 +1,7 @@
 {
-  "last_node_id": 31,
-  "last_link_id": 57,
+  "last_node_id": 33,
+  "last_link_id": 60,
   "nodes": [
-    {
-      "id": 28,
-      "type": "VHS_VideoCombine",
-      "pos": [
-        1432,
-        150
-      ],
-      "size": [
-        667.752197265625,
-        310
-      ],
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 51,
-          "slot_index": 0
-        },
-        {
-          "name": "audio",
-          "type": "VHS_AUDIO",
-          "link": null
-        },
-        {
-          "name": "meta_batch",
-          "type": "VHS_BatchManager",
-          "link": null
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "Filenames",
-          "type": "VHS_FILENAMES",
-          "links": null,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VHS_VideoCombine"
-      },
-      "widgets_values": {
-        "frame_rate": 8,
-        "loop_count": 0,
-        "filename_prefix": "CogVideoX",
-        "format": "video/h264-mp4",
-        "pix_fmt": "yuv420p",
-        "crf": 19,
-        "save_metadata": true,
-        "pingpong": false,
-        "save_output": false,
-        "videopreview": {
-          "hidden": false,
-          "paused": false,
-          "params": {
-            "filename": "CogVideoX_00001.mp4",
-            "subfolder": "",
-            "type": "temp",
-            "format": "video/h264-mp4",
-            "frame_rate": 8
-          }
-        }
-      }
-    },
     {
       "id": 30,
       "type": "CogVideoTextEncode",
@@ -248,7 +177,7 @@
           "name": "images",
           "type": "IMAGE",
           "links": [
-            51
+            59
           ],
           "shape": 3,
           "slot_index": 0
@@ -256,6 +185,60 @@
       ],
       "properties": {
         "Node name for S&R": "CogVideoDecode"
+      }
+    },
+    {
+      "id": 33,
+      "type": "GetImageSizeAndCount",
+      "pos": [
+        1189,
+        134
+      ],
+      "size": {
+        "0": 210,
+        "1": 86
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 59
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            60
+          ],
+          "shape": 3,
+          "slot_index": 0
+        },
+        {
+          "name": "720 width",
+          "type": "INT",
+          "links": null,
+          "shape": 3
+        },
+        {
+          "name": "480 height",
+          "type": "INT",
+          "links": null,
+          "shape": 3
+        },
+        {
+          "name": "122 count",
+          "type": "INT",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetImageSizeAndCount"
       }
     },
     {
@@ -319,17 +302,88 @@
       "widgets_values": [
         480,
         720,
-        16,
+        128,
         8,
         25,
         6,
-        806286757407561,
+        806286757407563,
         "fixed",
         "DDIM",
-        16,
-        2,
+        48,
+        12,
         1
       ]
+    },
+    {
+      "id": 32,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        1439,
+        122
+      ],
+      "size": [
+        563.3333740234375,
+        686.2222493489583
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 60,
+          "slot_index": 0
+        },
+        {
+          "name": "audio",
+          "type": "VHS_AUDIO",
+          "link": null
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 8,
+        "loop_count": 0,
+        "filename_prefix": "AnimateDiff",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "AnimateDiff_00002.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 8
+          }
+        }
+      }
     }
   ],
   "links": [
@@ -356,14 +410,6 @@
       11,
       1,
       "LATENT"
-    ],
-    [
-      51,
-      11,
-      0,
-      28,
-      0,
-      "IMAGE"
     ],
     [
       54,
@@ -396,16 +442,32 @@
       22,
       2,
       "CONDITIONING"
+    ],
+    [
+      59,
+      11,
+      0,
+      33,
+      0,
+      "IMAGE"
+    ],
+    [
+      60,
+      33,
+      0,
+      32,
+      0,
+      "IMAGE"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.8264462809917356,
+      "scale": 0.9090909090909091,
       "offset": [
-        253.92700064075518,
-        186.82608107136124
+        49.8551278885073,
+        87.4070604693312
       ]
     }
   },

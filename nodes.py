@@ -153,17 +153,17 @@ class CogVideoImageEncode:
         vae = pipeline["pipe"].vae
         vae.to(device)
   
-        image = image * 2.0 - 1.0
-        image = image.to(vae.dtype).to(device)
-        image = image.unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
-        B, C, T, H, W = image.shape
+        input_image = image.clone() * 2.0 - 1.0
+        input_image = input_image.to(vae.dtype).to(device)
+        input_image = input_image.unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
+        B, C, T, H, W = input_image.shape
         chunk_size = 16
         latents_list = []
         # Loop through the temporal dimension in chunks of 16
         for i in range(0, T, chunk_size):
             # Get the chunk of 16 frames (or remaining frames if less than 16 are left)
             end_index = min(i + chunk_size, T)
-            image_chunk = image[:, :, i:end_index, :, :]  # Shape: [B, C, chunk_size, H, W]
+            image_chunk = input_image[:, :, i:end_index, :, :]  # Shape: [B, C, chunk_size, H, W]
 
             # Encode the chunk of images
             latents = vae.encode(image_chunk)
@@ -179,6 +179,7 @@ class CogVideoImageEncode:
             latents = vae.config.scaling_factor * latents
             latents = latents.permute(0, 2, 1, 3, 4)  # B, T_chunk, C, H, W
             latents_list.append(latents)
+        vae.clear_fake_context_parallel_cache()
 
         # Concatenate all the chunks along the temporal dimension
         final_latents = torch.cat(latents_list, dim=1)
@@ -198,12 +199,14 @@ class CogVideoSampler:
                 "negative": ("CONDITIONING", ),
                 "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
                 "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
-                "num_frames": ("INT", {"default": 48, "min": 8, "max": 100, "step": 8}),
+                "num_frames": ("INT", {"default": 48, "min": 8, "max": 1024, "step": 8}),
                 "fps": ("INT", {"default": 8, "min": 1, "max": 100, "step": 1}),
                 "steps": ("INT", {"default": 25, "min": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "scheduler": (["DDIM", "DPM"],),
+                "t_tile_length": ("INT", {"default": 16, "min": 16, "max": 128, "step": 4}),
+                "t_tile_overlap": ("INT", {"default": 8, "min": 8, "max": 128, "step": 2}),
             },
             "optional": {
                 "samples": ("LATENT", ),
@@ -216,14 +219,20 @@ class CogVideoSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, fps, steps, cfg, seed, height, width, num_frames, scheduler, samples=None, denoise_strength=1.0):
+    def process(self, pipeline, positive, negative, fps, steps, cfg, seed, height, width, num_frames, scheduler, t_tile_length, t_tile_overlap, samples=None, denoise_strength=1.0):
         mm.soft_empty_cache()
+
+        assert t_tile_length > t_tile_overlap, "t_tile_length must be greater than t_tile_overlap"
+        assert t_tile_length <= num_frames, "t_tile_length must be equal or less than num_frames"
+        t_tile_length = t_tile_length // 4
+        t_tile_overlap = t_tile_overlap // 4
+
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
         dtype = pipeline["dtype"]
         base_path = pipeline["base_path"]
-
+        
         pipe.transformer.to(device)
         generator = torch.Generator(device=device).manual_seed(seed)
 
@@ -237,6 +246,8 @@ class CogVideoSampler:
             height = height,
             width = width,
             num_frames = num_frames,
+            t_tile_length = t_tile_length,
+            t_tile_overlap = t_tile_overlap,
             fps = fps,
             guidance_scale=cfg,
             latents=samples["samples"] if samples is not None else None,
