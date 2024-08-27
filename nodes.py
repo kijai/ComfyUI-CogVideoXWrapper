@@ -72,10 +72,6 @@ class DownloadAndLoadCogVideoModel:
 
         if torch_compile:
             torch._dynamo.config.suppress_errors = True
-            torch._inductor.config.conv_1x1_as_mm = True
-            torch._inductor.config.coordinate_descent_tuning = True
-            torch._inductor.config.epilogue_fusion = False
-            torch._inductor.config.coordinate_descent_check_all_directions = True
             pipe.transformer.to(device).to(memory_format=torch.channels_last)
             pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
 
