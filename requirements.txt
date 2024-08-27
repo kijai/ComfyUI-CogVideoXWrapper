@@ -1,2 +1,3 @@
 huggingface_hub
 diffusers>=0.30.1
+accelerate>=0.33.0
