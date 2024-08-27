@@ -31,7 +31,7 @@ class DownloadAndLoadCogVideoModel:
                         "fp32",
                         "bf16",
                     ],
-                    {"default": "bf16"},
+                    {"default": "bf16", "tooltip": "official recommendation is that 2b model should be fp16, 5b model should be bf16"},
                 ),
             },
         }
@@ -209,13 +209,12 @@ class CogVideoSampler:
                 "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
                 "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
                 "num_frames": ("INT", {"default": 48, "min": 8, "max": 1024, "step": 1}),
-                "fps": ("INT", {"default": 8, "min": 1, "max": 100, "step": 1}),
-                "steps": ("INT", {"default": 25, "min": 1}),
+                "steps": ("INT", {"default": 50, "min": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                "scheduler": (["DDIM", "DPM"],),
-                "t_tile_length": ("INT", {"default": 16, "min": 2, "max": 128, "step": 1}),
-                "t_tile_overlap": ("INT", {"default": 8, "min": 2, "max": 128, "step": 1}),
+                "scheduler": (["DDIM", "DPM"], {"tooltip": "5B likes DPM, but it doesn't support temporal tiling"}),
+                "t_tile_length": ("INT", {"default": 16, "min": 2, "max": 128, "step": 1, "tooltip": "Length of temporal tiling, use same alue as num_frames to disable, disabled automatically for DPM"}),
+                "t_tile_overlap": ("INT", {"default": 8, "min": 2, "max": 128, "step": 1, "tooltip": "Overlap of temporal tiling"}),
             },
             "optional": {
                 "samples": ("LATENT", ),
@@ -228,7 +227,7 @@ class CogVideoSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, fps, steps, cfg, seed, height, width, num_frames, scheduler, t_tile_length, t_tile_overlap, samples=None, denoise_strength=1.0):
+    def process(self, pipeline, positive, negative, steps, cfg, seed, height, width, num_frames, scheduler, t_tile_length, t_tile_overlap, samples=None, denoise_strength=1.0):
         mm.soft_empty_cache()
 
         assert t_tile_length > t_tile_overlap, "t_tile_length must be greater than t_tile_overlap"
@@ -257,7 +256,6 @@ class CogVideoSampler:
             num_frames = num_frames,
             t_tile_length = t_tile_length,
             t_tile_overlap = t_tile_overlap,
-            fps = fps,
             guidance_scale=cfg,
             latents=samples["samples"] if samples is not None else None,
             denoise_strength=denoise_strength,
@@ -269,8 +267,6 @@ class CogVideoSampler:
         pipe.transformer.to(offload_device)
         mm.soft_empty_cache()
         print(latents.shape)
-        pipeline["fps"] = fps
-        pipeline["num_frames"] = num_frames
 
         return (pipeline, {"samples": latents})
     
@@ -280,6 +276,7 @@ class CogVideoDecode:
         return {"required": {
             "pipeline": ("COGVIDEOPIPE",),
             "samples": ("LATENT", ),
+            "enable_vae_tiling": ("BOOLEAN", {"default": False}),
             }
         }
 
@@ -288,37 +285,27 @@ class CogVideoDecode:
     FUNCTION = "decode"
     CATEGORY = "CogVideoWrapper"
 
-    def decode(self, pipeline, samples):
+    def decode(self, pipeline, samples, enable_vae_tiling):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         latents = samples["samples"]
         vae = pipeline["pipe"].vae
         vae.to(device)
+        if enable_vae_tiling:
+            vae.enable_tiling(
+                tile_sample_min_height=96,
+                tile_sample_min_width=96,
+                tile_overlap_factor_height=1 / 12,
+                tile_overlap_factor_width=1 / 12,
+            )
 
-        if "num_frames" in pipeline:
-            num_frames = pipeline["num_frames"]
-            fps = pipeline["fps"]
-        else:
-            num_frames = latents.shape[2]
-            fps = 8
-
-        num_seconds = num_frames // fps
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / vae.config.scaling_factor * latents
 
-        frames = []
-        pbar = ProgressBar(num_seconds)
-        # for i in range(num_seconds):
-        #     start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
-        #     current_frames = vae.decode(latents[:, :, start_frame:end_frame]).sample
-        #     frames.append(current_frames)
-            
-        #     pbar.update(1)
         frames = vae.decode(latents).sample
         vae.to(offload_device)
         mm.soft_empty_cache()
 
-        #frames = torch.cat(frames, dim=2)
         video = pipeline["pipe"].video_processor.postprocess_video(video=frames, output_type="pt")
         video = video[0].permute(0, 2, 3, 1).cpu().float()
         print(video.min(), video.max())

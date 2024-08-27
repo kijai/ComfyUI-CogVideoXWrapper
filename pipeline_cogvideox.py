@@ -315,7 +315,6 @@ class CogVideoXPipeline(DiffusionPipeline):
         num_frames: int = 48,
         t_tile_length: int = 12,
         t_tile_overlap: int = 4,
-        fps: int = 8,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 6,
