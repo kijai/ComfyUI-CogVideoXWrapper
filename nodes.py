@@ -188,7 +188,6 @@ class CogVideoImageEncode:
             latents = vae.config.scaling_factor * latents
             latents = latents.permute(0, 2, 1, 3, 4)  # B, T_chunk, C, H, W
             latents_list.append(latents)
-        vae.clear_fake_context_parallel_cache()
 
         # Concatenate all the chunks along the temporal dimension
         final_latents = torch.cat(latents_list, dim=1)
