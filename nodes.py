@@ -212,7 +212,7 @@ class CogVideoSampler:
                 "negative": ("CONDITIONING", ),
                 "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
                 "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
-                "num_frames": ("INT", {"default": 48, "min": 8, "max": 1024, "step": 1}),
+                "num_frames": ("INT", {"default": 49, "min": 16, "max": 1024, "step": 1}),
                 "steps": ("INT", {"default": 50, "min": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
