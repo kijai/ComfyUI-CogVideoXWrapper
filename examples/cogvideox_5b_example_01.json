@@ -272,7 +272,7 @@
       "widgets_values": {
         "frame_rate": 8,
         "loop_count": 0,
-        "filename_prefix": "AnimateDiff",
+        "filename_prefix": "CogVideoX5B",
         "format": "video/nvenc_h264-mp4",
         "pix_fmt": "yuv420p",
         "bitrate": 10,
@@ -284,7 +284,7 @@
           "hidden": false,
           "paused": false,
           "params": {
-            "filename": "AnimateDiff_00002.mp4",
+            "filename": "CogVideoX5B.mp4",
             "subfolder": "",
             "type": "temp",
             "format": "video/nvenc_h264-mp4",
