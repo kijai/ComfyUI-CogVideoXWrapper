@@ -1,2 +1,2 @@
 huggingface_hub
-diffusers>=0.30.0
+diffusers>=0.30.1

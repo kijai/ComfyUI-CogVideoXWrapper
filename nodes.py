@@ -16,6 +16,12 @@ class DownloadAndLoadCogVideoModel:
     def INPUT_TYPES(s):
         return {
             "required": {
+                "model": (
+                    [
+                        "THUDM/CogVideoX-2b",
+                        "THUDM/CogVideoX-5b",
+                    ],
+                ),
 
             },
             "optional": {
@@ -35,21 +41,24 @@ class DownloadAndLoadCogVideoModel:
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
 
-    def loadmodel(self, precision):
+    def loadmodel(self, model, precision):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
 
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
 
-        base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
+        if "2b" in model:
+            base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
+        elif "5b" in model:
+            base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideoX-5b")
 
         if not os.path.exists(base_path):
             log.info(f"Downloading model to: {base_path}")
             from huggingface_hub import snapshot_download
 
             snapshot_download(
-                repo_id="THUDM/CogVideoX-2b",
+                repo_id=model,
                 ignore_patterns=["*text_encoder*"],
                 local_dir=base_path,
                 local_dir_use_symlinks=False,
@@ -199,14 +208,14 @@ class CogVideoSampler:
                 "negative": ("CONDITIONING", ),
                 "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
                 "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
-                "num_frames": ("INT", {"default": 48, "min": 8, "max": 1024, "step": 8}),
+                "num_frames": ("INT", {"default": 48, "min": 8, "max": 1024, "step": 1}),
                 "fps": ("INT", {"default": 8, "min": 1, "max": 100, "step": 1}),
                 "steps": ("INT", {"default": 25, "min": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
                 "scheduler": (["DDIM", "DPM"],),
-                "t_tile_length": ("INT", {"default": 16, "min": 16, "max": 128, "step": 4}),
-                "t_tile_overlap": ("INT", {"default": 8, "min": 8, "max": 128, "step": 2}),
+                "t_tile_length": ("INT", {"default": 16, "min": 2, "max": 128, "step": 1}),
+                "t_tile_overlap": ("INT", {"default": 8, "min": 2, "max": 128, "step": 1}),
             },
             "optional": {
                 "samples": ("LATENT", ),
@@ -276,10 +285,10 @@ class CogVideoDecode:
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("images",)
-    FUNCTION = "process"
+    FUNCTION = "decode"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, samples):
+    def decode(self, pipeline, samples):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         latents = samples["samples"]
@@ -299,19 +308,20 @@ class CogVideoDecode:
 
         frames = []
         pbar = ProgressBar(num_seconds)
-        for i in range(num_seconds):
-            start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
-            current_frames = vae.decode(latents[:, :, start_frame:end_frame]).sample
-            frames.append(current_frames)
+        # for i in range(num_seconds):
+        #     start_frame, end_frame = (0, 3) if i == 0 else (2 * i + 1, 2 * i + 3)
+        #     current_frames = vae.decode(latents[:, :, start_frame:end_frame]).sample
+        #     frames.append(current_frames)
             
-            pbar.update(1)
-        vae.clear_fake_context_parallel_cache()
+        #     pbar.update(1)
+        frames = vae.decode(latents).sample
         vae.to(offload_device)
         mm.soft_empty_cache()
 
-        frames = torch.cat(frames, dim=2)
+        #frames = torch.cat(frames, dim=2)
         video = pipeline["pipe"].video_processor.postprocess_video(video=frames, output_type="pt")
         video = video[0].permute(0, 2, 3, 1).cpu().float()
+        print(video.min(), video.max())
 
         return (video,)
 
