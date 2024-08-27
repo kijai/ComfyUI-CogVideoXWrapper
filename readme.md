@@ -1,10 +1,18 @@
 # WORK IN PROGRESS
 
+## Update
+5b model is now also supported for basic text2vid: https://huggingface.co/THUDM/CogVideoX-5b
+
+It is also autodownloaded to `ComfyUI/models/CogVideo/CogVideoX-5b`, text encoder is not needed as we use the ComfyUI T5.
+
+https://github.com/user-attachments/assets/991205cc-826e-4f93-831a-c10441f0f2ce
+
 Requires diffusers 0.30.1 (this is specified in requirements.txt)
 
 Uses same T5 model than SD3 and Flux, fp8 works fine too. Memory requirements depend mostly on the video length. 
 VAE decoding seems to be the only big that takes a lot of VRAM when everything is offloaded, peaks at around 13-14GB momentarily at that stage.
 Sampling itself takes only maybe 5-6GB.
+
 
 Hacked in img2img to attempt vid2vid workflow, works interestingly with some inputs, highly experimental.
 
