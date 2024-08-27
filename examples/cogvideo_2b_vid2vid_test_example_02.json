@@ -818,7 +818,7 @@
       "widgets_values": {
         "frame_rate": 8,
         "loop_count": 0,
-        "filename_prefix": "AnimateDiff",
+        "filename_prefix": "CogVideoX_vid2vid",
         "format": "video/nvenc_h264-mp4",
         "pix_fmt": "yuv420p",
         "bitrate": 10,

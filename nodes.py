@@ -25,15 +25,11 @@ class DownloadAndLoadCogVideoModel:
 
             },
             "optional": {
-                "precision": (
-                    [
-                        "fp16",
-                        "fp32",
-                        "bf16",
-                    ],
-                    {"default": "bf16", "tooltip": "official recommendation is that 2b model should be fp16, 5b model should be bf16"},
+                "precision": (["fp16", "fp32", "bf16"],
+                    {"default": "bf16", "tooltip": "official recommendation is that 2b model should be fp16, 5b model should be bf16"}
                 ),
-            },
+                "fp8_transformer": ("BOOLEAN", {"default": False, "tooltip": "cast the transformer to torch.float8_e4m3fn"}),
+            }
         }
 
     RETURN_TYPES = ("COGVIDEOPIPE",)
@@ -41,12 +37,16 @@ class DownloadAndLoadCogVideoModel:
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
 
-    def loadmodel(self, model, precision):
+    def loadmodel(self, model, precision, fp8_transformer):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
 
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
+        if fp8_transformer:
+            transformer_dtype = torch.float8_e4m3fn
+        else:
+            transformer_dtype = dtype
 
         if "2b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
@@ -63,7 +63,7 @@ class DownloadAndLoadCogVideoModel:
                 local_dir=base_path,
                 local_dir_use_symlinks=False,
             )
-        transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer").to(dtype).to(offload_device)
+        transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer").to(transformer_dtype).to(offload_device)
         vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
         scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
 
@@ -247,22 +247,22 @@ class CogVideoSampler:
             pipe.scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
         elif scheduler == "DPM":
             pipe.scheduler = CogVideoXDPMScheduler.from_pretrained(base_path, subfolder="scheduler")
-
-        latents = pipeline["pipe"](
-            num_inference_steps=steps,
-            height = height,
-            width = width,
-            num_frames = num_frames,
-            t_tile_length = t_tile_length,
-            t_tile_overlap = t_tile_overlap,
-            guidance_scale=cfg,
-            latents=samples["samples"] if samples is not None else None,
-            denoise_strength=denoise_strength,
-            prompt_embeds=positive.to(dtype).to(device),
-            negative_prompt_embeds=negative.to(dtype).to(device),
-            generator=generator,
-            device=device
-        )
+        with torch.autocast(mm.get_autocast_device(device)):
+            latents = pipeline["pipe"](
+                num_inference_steps=steps,
+                height = height,
+                width = width,
+                num_frames = num_frames,
+                t_tile_length = t_tile_length,
+                t_tile_overlap = t_tile_overlap,
+                guidance_scale=cfg,
+                latents=samples["samples"] if samples is not None else None,
+                denoise_strength=denoise_strength,
+                prompt_embeds=positive.to(dtype).to(device),
+                negative_prompt_embeds=negative.to(dtype).to(device),
+                generator=generator,
+                device=device
+            )
         pipe.transformer.to(offload_device)
         mm.soft_empty_cache()
         print(latents.shape)
@@ -297,7 +297,7 @@ class CogVideoDecode:
                 tile_overlap_factor_height=1 / 12,
                 tile_overlap_factor_width=1 / 12,
             )
-
+        latents = latents.to(vae.dtype)
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / vae.config.scaling_factor * latents
 

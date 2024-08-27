@@ -170,13 +170,13 @@ class CogVideoXPipeline(DiffusionPipeline):
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)            
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=self.vae.dtype)            
         else:
             latents = latents.to(device)
             timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, denoise_strength, device)
             latent_timestep = timesteps[:1]
             
-            noise = randn_tensor(shape, generator=generator, device=device, dtype=latents.dtype)
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=self.vae.dtype)
             frames_needed = noise.shape[1]
             current_frames = latents.shape[1]
             
@@ -400,6 +400,7 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+        prompt_embeds = prompt_embeds.to(self.transformer.dtype)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
@@ -425,6 +426,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             num_inference_steps,
             latents
         )
+        latents = latents.to(self.transformer.dtype)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -551,18 +553,15 @@ class CogVideoXPipeline(DiffusionPipeline):
                         noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                     # compute the previous noisy sample x_t -> x_t-1
-                    if not isinstance(self.scheduler, CogVideoXDPMScheduler):
-                        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-                    else:
-                        latents, old_pred_original_sample = self.scheduler.step(
-                            noise_pred,
-                            old_pred_original_sample,
-                            t,
-                            timesteps[i - 1] if i > 0 else None,
-                            latents,
-                            **extra_step_kwargs,
-                            return_dict=False,
-                        )
+                    latents, old_pred_original_sample = self.scheduler.step(
+                        noise_pred,
+                        old_pred_original_sample,
+                        t,
+                        timesteps[i - 1] if i > 0 else None,
+                        latents.to(self.vae.dtype),
+                        **extra_step_kwargs,
+                        return_dict=False,
+                    )
                     latents = latents.to(prompt_embeds.dtype)
 
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
