@@ -1,6 +1,6 @@
 # WORK IN PROGRESS
 
-Requires diffusers 0.30.0 (this is specified in requirements.txt)
+Requires diffusers 0.30.1 (this is specified in requirements.txt)
 
 Uses same T5 model than SD3 and Flux, fp8 works fine too. Memory requirements depend mostly on the video length. 
 VAE decoding seems to be the only big that takes a lot of VRAM when everything is offloaded, peaks at around 13-14GB momentarily at that stage.
