@@ -1,0 +1,415 @@
+{
+  "last_node_id": 33,
+  "last_link_id": 59,
+  "nodes": [
+    {
+      "id": 20,
+      "type": "CLIPLoader",
+      "pos": [
+        -59,
+        397
+      ],
+      "size": {
+        "0": 451.30548095703125,
+        "1": 82
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            54,
+            56
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "t5\\google_t5-v1_1-xxl_encoderonly-fp8_e4m3fn.safetensors",
+        "sd3"
+      ]
+    },
+    {
+      "id": 31,
+      "type": "CogVideoTextEncode",
+      "pos": [
+        503,
+        521
+      ],
+      "size": {
+        "0": 463.01251220703125,
+        "1": 98.10446166992188
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 56
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            57
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoTextEncode"
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 11,
+      "type": "CogVideoDecode",
+      "pos": [
+        1140,
+        783
+      ],
+      "size": {
+        "0": 210,
+        "1": 46
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 37
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 38
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            59
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoDecode"
+      }
+    },
+    {
+      "id": 1,
+      "type": "DownloadAndLoadCogVideoModel",
+      "pos": [
+        649,
+        182
+      ],
+      "size": {
+        "0": 315,
+        "1": 82
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            36
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadCogVideoModel"
+      },
+      "widgets_values": [
+        "THUDM/CogVideoX-5b",
+        "bf16"
+      ]
+    },
+    {
+      "id": 22,
+      "type": "CogVideoSampler",
+      "pos": [
+        1041,
+        342
+      ],
+      "size": {
+        "0": 315,
+        "1": 382
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 36
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 55,
+          "slot_index": 1
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 57
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            37
+          ],
+          "shape": 3
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            38
+          ],
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoSampler"
+      },
+      "widgets_values": [
+        480,
+        720,
+        49,
+        8,
+        50,
+        7,
+        806286757407563,
+        "fixed",
+        "DPM",
+        49,
+        8,
+        1
+      ]
+    },
+    {
+      "id": 33,
+      "type": "VHS_VideoCombine",
+      "pos": [
+        1533,
+        136
+      ],
+      "size": [
+        778.7022705078125,
+        853.801513671875
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 59
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 8,
+        "loop_count": 0,
+        "filename_prefix": "CogVideoX5B",
+        "format": "video/nvenc_h264-mp4",
+        "pix_fmt": "yuv420p",
+        "bitrate": 10,
+        "megabit": true,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "CogVideoX5B.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/nvenc_h264-mp4",
+            "frame_rate": 8
+          },
+          "muted": false
+        }
+      }
+    },
+    {
+      "id": 30,
+      "type": "CogVideoTextEncode",
+      "pos": [
+        500,
+        308
+      ],
+      "size": {
+        "0": 474.8450012207031,
+        "1": 164.7423553466797
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 54
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            55
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoTextEncode"
+      },
+      "widgets_values": [
+        "The camera follows behind a white vintage SUV with a black roof rack as it speeds up a steep dirt road surrounded by pine trees on a steep mountain slope, dust kicks up from its tires, the sunlight shines on the SUV as it speeds along the dirt road, casting a warm glow over the scene. The dirt road curves gently into the distance, with no other cars or vehicles in sight. The trees on either side of the road are redwoods, with patches of greenery scattered throughout. The car is seen from the rear following the curve with ease, making it seem as if it is on a rugged drive through the rugged terrain. The dirt road itself is surrounded by steep hills and mountains, with a clear blue sky above with wispy clouds.\n"
+      ]
+    }
+  ],
+  "links": [
+    [
+      36,
+      1,
+      0,
+      22,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      37,
+      22,
+      0,
+      11,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      38,
+      22,
+      1,
+      11,
+      1,
+      "LATENT"
+    ],
+    [
+      54,
+      20,
+      0,
+      30,
+      0,
+      "CLIP"
+    ],
+    [
+      55,
+      30,
+      0,
+      22,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      56,
+      20,
+      0,
+      31,
+      0,
+      "CLIP"
+    ],
+    [
+      57,
+      31,
+      0,
+      22,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      59,
+      11,
+      0,
+      33,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.7513148009015782,
+      "offset": [
+        106.37225000664994,
+        78.14886929032406
+      ]
+    }
+  },
+  "version": 0.4
+}
