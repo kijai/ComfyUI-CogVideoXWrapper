@@ -59,7 +59,7 @@ class DownloadAndLoadCogVideoModel:
 
             snapshot_download(
                 repo_id=model,
-                ignore_patterns=["*text_encoder*"],
+                ignore_patterns=["*text_encoder*", "*tokenizer*"],
                 local_dir=base_path,
                 local_dir_use_symlinks=False,
             )
