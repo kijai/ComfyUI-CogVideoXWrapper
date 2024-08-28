@@ -2,7 +2,7 @@
 
 ## Updade2
 
-Added **experimental** support for onediff, this reduced sampling time by ~30% for me, reaching 4.23 it/s on 4090 with 49 frames. 
+Added **experimental** support for onediff, this reduced sampling time by ~40% for me, reaching 4.23 it/s on 4090 with 49 frames. 
 This requires using Linux, torch 2.4.0, onediff and nexfort installation:
 
 `pip install --pre onediff onediffx`
