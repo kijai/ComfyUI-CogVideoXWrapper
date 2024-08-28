@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-cogvideoxwrapper"
+description = "Diffusers wrapper for CogVideoX -models: [a/https://github.com/THUDM/CogVideo](https://github.com/THUDM/CogVideo)"
+version = "1.0.0"
+license = {file = "LICENSE"}
+dependencies = ["huggingface_hub", "diffusers>=0.30.1", "accelerate>=0.33.0"]
+
+[project.urls]
+Repository = "https://github.com/kijai/ComfyUI-CogVideoXWrapper"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = ""
+DisplayName = "ComfyUI-CogVideoXWrapper"
+Icon = ""
