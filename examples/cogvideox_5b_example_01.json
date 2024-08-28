@@ -279,7 +279,7 @@
         "frame_rate": 8,
         "loop_count": 0,
         "filename_prefix": "CogVideoX5B",
-        "format": "video/nvenc_h264-mp4",
+        "format": "video/h264-mp4",
         "pix_fmt": "yuv420p",
         "bitrate": 10,
         "megabit": true,
@@ -293,7 +293,7 @@
             "filename": "CogVideoX5B_00009.mp4",
             "subfolder": "",
             "type": "temp",
-            "format": "video/nvenc_h264-mp4",
+            "format": "video/h264-mp4",
             "frame_rate": 8
           },
           "muted": false

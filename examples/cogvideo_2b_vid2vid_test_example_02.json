@@ -819,7 +819,7 @@
         "frame_rate": 8,
         "loop_count": 0,
         "filename_prefix": "CogVideoX_vid2vid",
-        "format": "video/nvenc_h264-mp4",
+        "format": "video/h264-mp4",
         "pix_fmt": "yuv420p",
         "bitrate": 10,
         "megabit": true,
@@ -833,7 +833,7 @@
             "filename": "AnimateDiff_00001.mp4",
             "subfolder": "",
             "type": "temp",
-            "format": "video/nvenc_h264-mp4",
+            "format": "video/h264-mp4",
             "frame_rate": 8
           }
         }

@@ -1,5 +1,16 @@
 # WORK IN PROGRESS
 
+## Updade2
+
+Added **experimental** support for onediff, this reduced sampling time by ~30% for me, reaching 4.23 it/s on 4090 with 49 frames. 
+This requires using Linux, torch 2.4.0, onediff and nexfort installation:
+
+`pip install --pre onediff onediffx`
+
+`pip install nexfort`
+
+First run will take around 5 mins for the compilation.
+
 ## Update
 5b model is now also supported for basic text2vid: https://huggingface.co/THUDM/CogVideoX-5b
 
