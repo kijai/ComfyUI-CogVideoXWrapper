@@ -169,6 +169,9 @@ class CogVideoImageEncode:
             "pipeline": ("COGVIDEOPIPE",),
             "image": ("IMAGE", ),
             },
+            "optional": {
+                "chunk_size": ("INT", {"default": 16, "min": 1}),
+            },
         }
 
     RETURN_TYPES = ("LATENT",)
@@ -176,7 +179,7 @@ class CogVideoImageEncode:
     FUNCTION = "encode"
     CATEGORY = "CogVideoWrapper"
 
-    def encode(self, pipeline, image):
+    def encode(self, pipeline, image, chunk_size=16):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         generator = torch.Generator(device=device).manual_seed(0)
@@ -187,7 +190,7 @@ class CogVideoImageEncode:
         input_image = input_image.to(vae.dtype).to(device)
         input_image = input_image.unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
         B, C, T, H, W = input_image.shape
-        chunk_size = 16
+
         latents_list = []
         # Loop through the temporal dimension in chunks of 16
         for i in range(0, T, chunk_size):
