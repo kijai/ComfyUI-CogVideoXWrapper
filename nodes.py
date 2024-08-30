@@ -185,7 +185,7 @@ class CogVideoImageEncode:
     FUNCTION = "encode"
     CATEGORY = "CogVideoWrapper"
 
-    def encode(self, pipeline, image, chunk_size=16, enable_vae_slicing=True):
+    def encode(self, pipeline, image, chunk_size=8, enable_vae_slicing=True):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         generator = torch.Generator(device=device).manual_seed(0)
