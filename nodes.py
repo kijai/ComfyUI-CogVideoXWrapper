@@ -283,6 +283,11 @@ class CogVideoSampler:
         elif scheduler == "DPM":
             pipe.scheduler = CogVideoXDPMScheduler.from_pretrained(base_path, subfolder="scheduler")
 
+        if negative.shape[1] < positive.shape[1]:
+            target_length = positive.shape[1]
+            padding = torch.zeros((negative.shape[0], target_length - negative.shape[1], negative.shape[2]), device=negative.device)
+            negative = torch.cat((negative, padding), dim=1)
+
         autocastcondition = not pipeline["onediff"]
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
@@ -314,7 +319,7 @@ class CogVideoDecode:
         return {"required": {
             "pipeline": ("COGVIDEOPIPE",),
             "samples": ("LATENT", ),
-            "enable_vae_tiling": ("BOOLEAN", {"default": False}),
+            "enable_vae_tiling": ("BOOLEAN", {"default": False, "tooltip": "Drastically reduces memory use but may introduce seams"}),
             },
             "optional": {
             "tile_sample_min_height": ("INT", {"default": 96, "min": 16, "max": 2048, "step": 8}),
