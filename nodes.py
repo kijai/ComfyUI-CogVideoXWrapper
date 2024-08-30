@@ -353,6 +353,8 @@ class CogVideoDecode:
                 tile_overlap_factor_height=tile_overlap_factor_height,
                 tile_overlap_factor_width=tile_overlap_factor_width,
             )
+        else:
+            vae.disable_tiling()
         latents = latents.to(vae.dtype)
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / vae.config.scaling_factor * latents
