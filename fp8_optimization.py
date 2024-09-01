@@ -1,3 +1,5 @@
+#based on ComfyUI's and MinusZoneAI's fp8_linear optimization
+
 import torch
 import torch.nn as nn
 from types import MethodType
