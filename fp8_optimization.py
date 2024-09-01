@@ -2,7 +2,6 @@
 
 import torch
 import torch.nn as nn
-from types import MethodType
 
 def fp8_linear_forward(cls, original_dtype, input):
     weight_dtype = cls.weight.dtype
