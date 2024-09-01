@@ -31,7 +31,7 @@ class DownloadAndLoadCogVideoModel:
                 "precision": (["fp16", "fp32", "bf16"],
                     {"default": "bf16", "tooltip": "official recommendation is that 2b model should be fp16, 5b model should be bf16"}
                 ),
-                "fp8_transformer": ("BOOLEAN", {"default": False, "tooltip": "cast the transformer to torch.float8_e4m3fn"}),
+                "fp8_transformer": (['disabled', 'enabled', 'fastmode'], {"default": 'disabled', "tooltip": "enabled casts the transformer to torch.float8_e4m3fn, fastmode is only for latest nvidia GPUs"}),
                 "compile": (["disabled","onediff","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
                 "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
             }
@@ -42,13 +42,13 @@ class DownloadAndLoadCogVideoModel:
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
 
-    def loadmodel(self, model, precision, fp8_transformer, compile="disabled", enable_sequential_cpu_offload=False):
+    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
 
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
-        if fp8_transformer:
+        if fp8_transformer != "disabled":
             transformer_dtype = torch.float8_e4m3fn
         else:
             transformer_dtype = dtype
@@ -69,6 +69,9 @@ class DownloadAndLoadCogVideoModel:
                 local_dir_use_symlinks=False,
             )
         transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer").to(transformer_dtype).to(offload_device)
+        if fp8_transformer == "fastmode":
+            from .fp8_optimization import convert_fp8_linear
+            convert_fp8_linear(transformer, dtype)
         vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
         
         scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
@@ -92,6 +95,7 @@ class DownloadAndLoadCogVideoModel:
             fuse_qkv_projections=True,
             )
 
+        
 
         pipeline = {
             "pipe": pipe,
@@ -177,6 +181,7 @@ class CogVideoImageEncode:
             "optional": {
                 "chunk_size": ("INT", {"default": 16, "min": 1}),
                 "enable_vae_slicing": ("BOOLEAN", {"default": True, "tooltip": "VAE will split the input tensor in slices to compute decoding in several steps. This is useful to save some memory and allow larger batch sizes."}),
+                "mask": ("MASK", ),
             },
         }
 
@@ -185,11 +190,15 @@ class CogVideoImageEncode:
     FUNCTION = "encode"
     CATEGORY = "CogVideoWrapper"
 
-    def encode(self, pipeline, image, chunk_size=8, enable_vae_slicing=True):
+    def encode(self, pipeline, image, chunk_size=8, enable_vae_slicing=True, mask=None):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         generator = torch.Generator(device=device).manual_seed(0)
+
+        B, H, W, C = image.shape
+
         vae = pipeline["pipe"].vae
+        
         if enable_vae_slicing:
             vae.enable_slicing()
         else:
@@ -197,8 +206,17 @@ class CogVideoImageEncode:
 
         if not pipeline["cpu_offloading"]:
             vae.to(device)
-  
-        input_image = image.clone() * 2.0 - 1.0
+        
+        input_image = image.clone()
+        if mask is not None:
+            pipeline["pipe"].original_mask = mask
+            # print(mask.shape)
+            # mask = mask.repeat(B, 1, 1)  # Shape: [B, H, W]
+            # mask = mask.unsqueeze(-1).repeat(1, 1, 1, C)
+            # print(mask.shape)
+            # input_image = input_image * (1 -mask)
+            
+        input_image = input_image * 2.0 - 1.0
         input_image = input_image.to(vae.dtype).to(device)
         input_image = input_image.unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
         B, C, T, H, W = input_image.shape

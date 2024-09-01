@@ -17,6 +17,7 @@ import inspect
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 import math
 
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
@@ -138,6 +139,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         vae: AutoencoderKLCogVideoX,
         transformer: CogVideoXTransformer3DModel,
         scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
+        original_mask = None
     ):
         super().__init__()
 
@@ -150,7 +152,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         self.vae_scale_factor_temporal = (
             self.vae.config.temporal_compression_ratio if hasattr(self, "vae") and self.vae is not None else 4
         )
-
+        self.original_mask = original_mask
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
     def prepare_latents(
@@ -168,9 +170,9 @@ class CogVideoXPipeline(DiffusionPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=self.vae.dtype)
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=self.vae.dtype)            
+            latents = noise       
         else:
             latents = latents.to(device)
             timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, denoise_strength, device)
@@ -189,7 +191,7 @@ class CogVideoXPipeline(DiffusionPipeline):
 
             latents = self.scheduler.add_noise(latents, noise, latent_timestep)
         latents = latents * self.scheduler.init_noise_sigma # scale the initial noise by the standard deviation required by the scheduler
-        return latents, timesteps
+        return latents, timesteps, noise
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -419,8 +421,9 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         if latents is None and num_frames == t_tile_length:
             num_frames += 1
-
-        latents, timesteps = self.prepare_latents(
+        image_latents = latents
+        original_image_latents = image_latents
+        latents, timesteps, noise = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             latent_channels,
             num_frames,
@@ -435,6 +438,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             latents
         )
         latents = latents.to(self.transformer.dtype)
+       
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -451,10 +455,25 @@ class CogVideoXPipeline(DiffusionPipeline):
             else None
         )
 
+        # masks
+        if self.original_mask is not None:
+            mask = self.original_mask.to(device)
+            print("self.original_mask: ", self.original_mask.shape)
+            
+            mask = F.interpolate(self.original_mask.unsqueeze(1), size=(latents.shape[-2], latents.shape[-1]), mode='bilinear', align_corners=False)
+            if mask.shape[0] != latents.shape[1]:
+                mask = mask.unsqueeze(1).repeat(1, latents.shape[1], 16, 1, 1)
+            else:
+                mask = mask.unsqueeze(0).repeat(1, 1, 16, 1, 1)
+            print("latents: ", latents.shape)
+            print("mask: ", mask.shape)
+
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         comfy_pbar = ProgressBar(num_inference_steps)
+        
         with self.progress_bar(total=num_inference_steps) as progress_bar:
+            
             # for DPM-solver++
             old_pred_original_sample = None
             for i, t in enumerate(timesteps):
@@ -535,6 +554,19 @@ class CogVideoXPipeline(DiffusionPipeline):
                     latents_all /= contributors
 
                     latents = latents_all
+                    #print("latents",latents.shape)
+                    # start diff diff
+                    if i < len(timesteps) - 1 and self.original_mask is not None:
+                        noise_timestep = timesteps[i + 1]
+                        image_latent = self.scheduler.add_noise(original_image_latents, noise, torch.tensor([noise_timestep])
+                        )
+                        mask = mask.to(latents)
+                        ts_from = timesteps[0]
+                        ts_to = timesteps[-1]
+                        threshold = (t - ts_to) / (ts_from - ts_to)
+                        mask = torch.where(mask >= threshold, mask, torch.zeros_like(mask))
+                        latents = image_latent * mask + latents * (1 - mask)
+                        # end diff diff
                     
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
@@ -577,7 +609,18 @@ class CogVideoXPipeline(DiffusionPipeline):
                         **extra_step_kwargs,
                         return_dict=False,
                     )
-                    latents = latents.to(prompt_embeds.dtype)
+                    # start diff diff
+                    if i < len(timesteps) - 1 and self.original_mask is not None:
+                        noise_timestep = timesteps[i + 1]
+                        image_latent = self.scheduler.add_noise(original_image_latents, noise, torch.tensor([noise_timestep])
+                        )
+                        mask = mask.to(latents)
+                        ts_from = timesteps[0]
+                        ts_to = timesteps[-1]
+                        threshold = (t - ts_to) / (ts_from - ts_to)
+                        mask = torch.where(mask >= threshold, mask, torch.zeros_like(mask))
+                        latents = image_latent * mask + latents * (1 - mask)
+                        # end diff diff
 
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
