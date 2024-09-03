@@ -5,10 +5,18 @@
     {
       "id": 30,
       "type": "CogVideoTextEncode",
-      "pos": [
-        500,
-        308
-      ],
+      "pos": {
+        "0": 500,
+        "1": 308,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
       "size": {
         "0": 474.8450012207031,
         "1": 164.7423553466797
@@ -44,10 +52,18 @@
     {
       "id": 20,
       "type": "CLIPLoader",
-      "pos": [
-        -59,
-        397
-      ],
+      "pos": {
+        "0": -59,
+        "1": 397,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
       "size": {
         "0": 451.30548095703125,
         "1": 82
@@ -55,6 +71,7 @@
       "flags": {},
       "order": 0,
       "mode": 0,
+      "inputs": [],
       "outputs": [
         {
           "name": "CLIP",
@@ -78,10 +95,18 @@
     {
       "id": 31,
       "type": "CogVideoTextEncode",
-      "pos": [
-        503,
-        521
-      ],
+      "pos": {
+        "0": 503,
+        "1": 521,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
       "size": {
         "0": 463.01251220703125,
         "1": 98.10446166992188
@@ -115,110 +140,144 @@
       ]
     },
     {
-      "id": 11,
-      "type": "CogVideoDecode",
-      "pos": [
-        1140,
-        783
-      ],
-      "size": {
-        "0": 210,
-        "1": 78
+      "id": 32,
+      "type": "VHS_VideoCombine",
+      "pos": {
+        "0": 1439,
+        "1": 122,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
       },
+      "size": [
+        563.3333740234375,
+        688.2124814882384
+      ],
       "flags": {},
-      "order": 5,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 37
+          "name": "images",
+          "type": "IMAGE",
+          "link": 60,
+          "slot_index": 0
         },
         {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 38
+          "name": "audio",
+          "type": "VHS_AUDIO",
+          "link": null
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
         }
       ],
       "outputs": [
         {
-          "name": "images",
-          "type": "IMAGE",
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 8,
+        "loop_count": 0,
+        "filename_prefix": "CogVideo2B_long",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "CogVideo2B_long_00001.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 8
+          }
+        }
+      }
+    },
+    {
+      "id": 1,
+      "type": "DownloadAndLoadCogVideoModel",
+      "pos": {
+        "0": 653,
+        "1": 90,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
+      "size": {
+        "0": 315,
+        "1": 154
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
           "links": [
-            59
+            36
           ],
           "slot_index": 0,
           "shape": 3
         }
       ],
       "properties": {
-        "Node name for S&R": "CogVideoDecode"
+        "Node name for S&R": "DownloadAndLoadCogVideoModel"
       },
       "widgets_values": [
+        "THUDM/CogVideoX-2b",
+        "fp16",
+        "disabled",
+        "disabled",
         false
       ]
     },
     {
-      "id": 33,
-      "type": "GetImageSizeAndCount",
-      "pos": [
-        1189,
-        134
-      ],
-      "size": {
-        "0": 210,
-        "1": 86
-      },
-      "flags": {},
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 59
-        }
-      ],
-      "outputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            60
-          ],
-          "slot_index": 0,
-          "shape": 3
-        },
-        {
-          "name": "720 width",
-          "type": "INT",
-          "links": null,
-          "shape": 3
-        },
-        {
-          "name": "480 height",
-          "type": "INT",
-          "links": null,
-          "shape": 3
-        },
-        {
-          "name": "32 count",
-          "type": "INT",
-          "links": null,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetImageSizeAndCount"
-      }
-    },
-    {
       "id": 22,
       "type": "CogVideoSampler",
-      "pos": [
-        1041,
-        342
-      ],
+      "pos": {
+        "0": 1041,
+        "1": 342,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
       "size": {
         "0": 315,
         "1": 382
@@ -278,114 +337,129 @@
         6,
         6,
         806286757407563,
-        "DDIM",
+        "DDIM_tiled",
         48,
         8,
         1
       ]
     },
     {
-      "id": 1,
-      "type": "DownloadAndLoadCogVideoModel",
-      "pos": [
-        649,
-        182
-      ],
-      "size": {
-        "0": 315,
-        "1": 82
+      "id": 11,
+      "type": "CogVideoDecode",
+      "pos": {
+        "0": 1049,
+        "1": 772,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
       },
+      "size": [
+        295.70112532900725,
+        198
+      ],
       "flags": {},
-      "order": 1,
+      "order": 5,
       "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 37
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 38
+        }
+      ],
       "outputs": [
         {
-          "name": "cogvideo_pipe",
-          "type": "COGVIDEOPIPE",
+          "name": "images",
+          "type": "IMAGE",
           "links": [
-            36
+            59
           ],
           "slot_index": 0,
           "shape": 3
         }
       ],
       "properties": {
-        "Node name for S&R": "DownloadAndLoadCogVideoModel"
+        "Node name for S&R": "CogVideoDecode"
       },
       "widgets_values": [
-        "THUDM/CogVideoX-2b",
-        "fp16"
+        true,
+        96,
+        96,
+        0.083,
+        0.083,
+        true
       ]
     },
     {
-      "id": 32,
-      "type": "VHS_VideoCombine",
-      "pos": [
-        1439,
-        122
-      ],
-      "size": [
-        563.3333740234375,
-        310
-      ],
+      "id": 33,
+      "type": "GetImageSizeAndCount",
+      "pos": {
+        "0": 1176,
+        "1": 122,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
+      "size": {
+        "0": 210,
+        "1": 86
+      },
       "flags": {},
-      "order": 7,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
-          "name": "images",
+          "name": "image",
           "type": "IMAGE",
-          "link": 60,
-          "slot_index": 0
-        },
-        {
-          "name": "audio",
-          "type": "VHS_AUDIO",
-          "link": null
-        },
-        {
-          "name": "meta_batch",
-          "type": "VHS_BatchManager",
-          "link": null
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": null
+          "link": 59
         }
       ],
       "outputs": [
         {
-          "name": "Filenames",
-          "type": "VHS_FILENAMES",
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            60
+          ],
+          "slot_index": 0,
+          "shape": 3
+        },
+        {
+          "name": "728 width",
+          "type": "INT",
+          "links": null,
+          "shape": 3
+        },
+        {
+          "name": "485 height",
+          "type": "INT",
+          "links": null,
+          "shape": 3
+        },
+        {
+          "name": "96 count",
+          "type": "INT",
           "links": null,
           "shape": 3
         }
       ],
       "properties": {
-        "Node name for S&R": "VHS_VideoCombine"
-      },
-      "widgets_values": {
-        "frame_rate": 8,
-        "loop_count": 0,
-        "filename_prefix": "CogVideo2B_long",
-        "format": "video/h264-mp4",
-        "pix_fmt": "yuv420p",
-        "crf": 19,
-        "save_metadata": true,
-        "pingpong": false,
-        "save_output": false,
-        "videopreview": {
-          "hidden": false,
-          "paused": false,
-          "params": {
-            "filename": "AnimateDiff_00001.mp4",
-            "subfolder": "",
-            "type": "temp",
-            "format": "video/h264-mp4",
-            "frame_rate": 8
-          }
-        }
+        "Node name for S&R": "GetImageSizeAndCount"
       }
     }
   ],
@@ -467,10 +541,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.8264462809917354,
+      "scale": 0.7513148009015777,
       "offset": [
-        86.92928825501215,
-        77.5537144406024
+        253.3863163213836,
+        255.76127216744268
       ]
     }
   },

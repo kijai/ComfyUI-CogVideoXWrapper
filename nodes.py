@@ -48,10 +48,6 @@ class DownloadAndLoadCogVideoModel:
         mm.soft_empty_cache()
 
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
-        if fp8_transformer != "disabled":
-            transformer_dtype = torch.float8_e4m3fn
-        else:
-            transformer_dtype = dtype
 
         if "2b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
@@ -68,12 +64,15 @@ class DownloadAndLoadCogVideoModel:
                 local_dir=base_path,
                 local_dir_use_symlinks=False,
             )
-        transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer").to(transformer_dtype).to(offload_device)
-        if fp8_transformer == "fastmode":
-            from .fp8_optimization import convert_fp8_linear
-            convert_fp8_linear(transformer, dtype)
+        if fp8_transformer == "enabled" or fp8_transformer == "fastmode":
+            transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer").to(torch.float8_e4m3fn).to(offload_device)
+            if fp8_transformer == "fastmode":
+                from .fp8_optimization import convert_fp8_linear
+                convert_fp8_linear(transformer, dtype)
+        else:
+            transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer").to(dtype).to(offload_device)
+
         vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
-        
         scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
 
         pipe = CogVideoXPipeline(vae, transformer, scheduler)
@@ -94,8 +93,6 @@ class DownloadAndLoadCogVideoModel:
             ignores=["vae"],
             fuse_qkv_projections=True,
             )
-
-        
 
         pipeline = {
             "pipe": pipe,
@@ -215,6 +212,8 @@ class CogVideoImageEncode:
             # mask = mask.unsqueeze(-1).repeat(1, 1, 1, C)
             # print(mask.shape)
             # input_image = input_image * (1 -mask)
+        else:
+            pipeline["pipe"].original_mask = None
             
         input_image = input_image * 2.0 - 1.0
         input_image = input_image.to(vae.dtype).to(device)
@@ -265,7 +264,7 @@ class CogVideoSampler:
                 "steps": ("INT", {"default": 50, "min": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                "scheduler": (["DDIM", "DPM"], {"tooltip": "5B likes DPM, but it doesn't support temporal tiling"}),
+                "scheduler": (["DDIM", "DPM", "DDIM_tiled"], {"tooltip": "5B likes DPM, but it doesn't support temporal tiling"}),
                 "t_tile_length": ("INT", {"default": 16, "min": 2, "max": 128, "step": 1, "tooltip": "Length of temporal tiling, use same alue as num_frames to disable, disabled automatically for DPM"}),
                 "t_tile_overlap": ("INT", {"default": 8, "min": 2, "max": 128, "step": 1, "tooltip": "Overlap of temporal tiling"}),
             },
@@ -298,7 +297,7 @@ class CogVideoSampler:
             pipe.transformer.to(device)
         generator = torch.Generator(device=device).manual_seed(seed)
 
-        if scheduler == "DDIM":
+        if scheduler == "DDIM" or scheduler == "DDIM_tiled":
             pipe.scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
         elif scheduler == "DPM":
             pipe.scheduler = CogVideoXDPMScheduler.from_pretrained(base_path, subfolder="scheduler")
@@ -324,7 +323,8 @@ class CogVideoSampler:
                 prompt_embeds=positive.to(dtype).to(device),
                 negative_prompt_embeds=negative.to(dtype).to(device),
                 generator=generator,
-                device=device
+                device=device,
+                scheduler_name=scheduler
             )
         if not pipeline["cpu_offloading"]:
             pipe.transformer.to(offload_device)

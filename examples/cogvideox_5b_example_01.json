@@ -5,10 +5,18 @@
     {
       "id": 31,
       "type": "CogVideoTextEncode",
-      "pos": [
-        503,
-        521
-      ],
+      "pos": {
+        "0": 503,
+        "1": 521,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
       "size": {
         "0": 463.01251220703125,
         "1": 98.10446166992188
@@ -42,93 +50,24 @@
       ]
     },
     {
-      "id": 11,
-      "type": "CogVideoDecode",
-      "pos": [
-        1140,
-        783
-      ],
-      "size": {
-        "0": 210,
-        "1": 78
-      },
-      "flags": {},
-      "order": 5,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 63
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 64
-        }
-      ],
-      "outputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "links": [
-            59
-          ],
-          "slot_index": 0,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CogVideoDecode"
-      },
-      "widgets_values": [
-        false
-      ]
-    },
-    {
-      "id": 1,
-      "type": "DownloadAndLoadCogVideoModel",
-      "pos": [
-        649,
-        182
-      ],
-      "size": {
-        "0": 315,
-        "1": 82
-      },
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "outputs": [
-        {
-          "name": "cogvideo_pipe",
-          "type": "COGVIDEOPIPE",
-          "links": [
-            60
-          ],
-          "slot_index": 0,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "DownloadAndLoadCogVideoModel"
-      },
-      "widgets_values": [
-        "THUDM/CogVideoX-5b",
-        "bf16"
-      ]
-    },
-    {
       "id": 30,
       "type": "CogVideoTextEncode",
-      "pos": [
-        500,
-        308
-      ],
-      "size": [
-        471.90143257018326,
-        168.0804709842023
-      ],
+      "pos": {
+        "0": 500,
+        "1": 308,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
+      "size": {
+        "0": 471.90142822265625,
+        "1": 168.08047485351562
+      },
       "flags": {},
       "order": 2,
       "mode": 0,
@@ -160,14 +99,22 @@
     {
       "id": 34,
       "type": "CogVideoSampler",
-      "pos": [
-        1041,
-        342
-      ],
-      "size": [
-        315.84047081854465,
-        358
-      ],
+      "pos": {
+        "0": 1041,
+        "1": 342,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
+      "size": {
+        "0": 315.8404846191406,
+        "1": 358
+      },
       "flags": {},
       "order": 4,
       "mode": 0,
@@ -231,13 +178,21 @@
     {
       "id": 33,
       "type": "VHS_VideoCombine",
-      "pos": [
-        1441,
-        129
-      ],
+      "pos": {
+        "0": 1441,
+        "1": 129,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
       "size": [
         778.7022705078125,
-        853.801513671875
+        310
       ],
       "flags": {},
       "order": 6,
@@ -281,8 +236,7 @@
         "filename_prefix": "CogVideoX5B",
         "format": "video/h264-mp4",
         "pix_fmt": "yuv420p",
-        "bitrate": 10,
-        "megabit": true,
+        "crf": 19,
         "save_metadata": true,
         "pingpong": false,
         "save_output": false,
@@ -303,17 +257,26 @@
     {
       "id": 20,
       "type": "CLIPLoader",
-      "pos": [
-        -26,
-        400
-      ],
+      "pos": {
+        "0": -26,
+        "1": 400,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
       "size": {
         "0": 451.30548095703125,
         "1": 82
       },
       "flags": {},
-      "order": 1,
+      "order": 0,
       "mode": 0,
+      "inputs": [],
       "outputs": [
         {
           "name": "CLIP",
@@ -332,6 +295,108 @@
       "widgets_values": [
         "t5\\google_t5-v1_1-xxl_encoderonly-fp8_e4m3fn.safetensors",
         "sd3"
+      ]
+    },
+    {
+      "id": 1,
+      "type": "DownloadAndLoadCogVideoModel",
+      "pos": {
+        "0": 642,
+        "1": 90,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
+      "size": {
+        "0": 315,
+        "1": 154
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            60
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadCogVideoModel"
+      },
+      "widgets_values": [
+        "THUDM/CogVideoX-5b",
+        "bf16",
+        "disabled",
+        "disabled",
+        false
+      ]
+    },
+    {
+      "id": 11,
+      "type": "CogVideoDecode",
+      "pos": {
+        "0": 1051,
+        "1": 748,
+        "2": 0,
+        "3": 0,
+        "4": 0,
+        "5": 0,
+        "6": 0,
+        "7": 0,
+        "8": 0,
+        "9": 0
+      },
+      "size": [
+        300.3964783563508,
+        198
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 63
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 64
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            59
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoDecode"
+      },
+      "widgets_values": [
+        false,
+        96,
+        96,
+        0.083,
+        0.083,
+        true
       ]
     }
   ],
@@ -405,10 +470,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.7513148009015777,
+      "scale": 0.8264462809917354,
       "offset": [
-        209.1392882550122,
-        105.74671444060245
+        161.910286780368,
+        124.7586178095323
       ]
     }
   },
