@@ -34,6 +34,7 @@ class DownloadAndLoadCogVideoModel:
                 "fp8_transformer": (['disabled', 'enabled', 'fastmode'], {"default": 'disabled', "tooltip": "enabled casts the transformer to torch.float8_e4m3fn, fastmode is only for latest nvidia GPUs"}),
                 "compile": (["disabled","onediff","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
                 "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
+                "enable_model_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "offload the model to CPU, this is useful for large models and small batch sizes"}),
             }
         }
 
@@ -42,7 +43,7 @@ class DownloadAndLoadCogVideoModel:
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
 
-    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False):
+    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, enable_model_cpu_offload=False):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
@@ -85,6 +86,8 @@ class DownloadAndLoadCogVideoModel:
         pipe = CogVideoXPipeline(vae, transformer, scheduler)
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
+        if enable_model_cpu_offload:
+            pipe.enable_model_cpu_offload()
 
         if compile == "torch":
             torch._dynamo.config.suppress_errors = True
@@ -107,7 +110,7 @@ class DownloadAndLoadCogVideoModel:
             "dtype": dtype,
             "base_path": base_path,
             "onediff": True if compile == "onediff" else False,
-            "cpu_offloading": enable_sequential_cpu_offload
+            "cpu_offloading": enable_sequential_cpu_offload or enable_model_cpu_offload,
         }
 
         return (pipeline,)
