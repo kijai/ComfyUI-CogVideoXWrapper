@@ -98,11 +98,11 @@ class DownloadAndLoadCogVideoModel:
             os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
             
             pipe = compile_pipe(
-            pipe,
-            backend="nexfort",
-            options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
-            ignores=["vae"],
-            fuse_qkv_projections=True,
+                pipe,
+                backend="nexfort",
+                options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
+                ignores=["vae"],
+                fuse_qkv_projections=True,
             )
 
         pipeline = {
