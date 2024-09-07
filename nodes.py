@@ -50,7 +50,7 @@ class DownloadAndLoadCogVideoModel:
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
 
         if "2b" in model:
-            base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
+            base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideoX-2b")
         elif "5b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideoX-5b")
 
