@@ -23,6 +23,7 @@ class DownloadAndLoadCogVideoModel:
                     [
                         "THUDM/CogVideoX-2b",
                         "THUDM/CogVideoX-5b",
+                        "bertjiazheng/KoolCogVideoX-5b",
                     ],
                 ),
 
@@ -52,7 +53,7 @@ class DownloadAndLoadCogVideoModel:
         if "2b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
         elif "5b" in model:
-            base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideoX-5b")
+            base_path = os.path.join(folder_paths.models_dir, "CogVideo", (model.split("/")[-1]))
 
         if not os.path.exists(base_path):
             log.info(f"Downloading model to: {base_path}")
