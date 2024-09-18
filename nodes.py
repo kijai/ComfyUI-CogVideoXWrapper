@@ -180,6 +180,57 @@ class CogVideoEncodePrompt:
         pipe.text_encoder.to(offload_device)
 
         return (positive, negative)
+
+# Inject clip_l and t5xxl w/ individual strength adjustments for ComfyUI's DualCLIPLoader node for CogVideoX. Use CLIPSave node from any SDXL model then load in a custom clip_l model. 
+# For some reason seems to give a lot more movement and consistency on new CogVideoXFun img2vid? set 'type' to flux / DualClipLoader.
+class CogVideoDualTextEncode_311:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "clip": ("CLIP",),
+                "clip_l": ("STRING", {"default": "", "multiline": True}),
+                "t5xxl": ("STRING", {"default": "", "multiline": True}),
+                "clip_l_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}), # excessive max for testing, have found intesting results up to 20 max?
+                "t5xxl_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}), # setting this to 0.0001 or level as high as 18 seems to work.
+            }
+        }
+
+    RETURN_TYPES = ("CONDITIONING",)
+    RETURN_NAMES = ("conditioning",)
+    FUNCTION = "process"
+    CATEGORY = "CogVideoWrapper"
+
+    def process(self, clip, clip_l, t5xxl, clip_l_strength, t5xxl_strength):
+        load_device = mm.text_encoder_device()
+        offload_device = mm.text_encoder_offload_device()
+
+        # setup tokenizer for clip_l and t5xxl
+        clip.tokenizer.t5xxl.pad_to_max_length = True
+        clip.tokenizer.t5xxl.max_length = 226
+        clip.cond_stage_model.to(load_device)
+
+        # tokenize clip_l and t5xxl
+        tokens_l = clip.tokenize(clip_l, return_word_ids=True)
+        tokens_t5 = clip.tokenize(t5xxl, return_word_ids=True)
+
+        # encode the tokens separately
+        embeds_l = clip.encode_from_tokens(tokens_l, return_pooled=False, return_dict=False)
+        embeds_t5 = clip.encode_from_tokens(tokens_t5, return_pooled=False, return_dict=False)
+
+        # apply strength adjustments to each embedding
+        if embeds_l.dim() == 3:
+            embeds_l *= clip_l_strength
+        if embeds_t5.dim() == 3:
+            embeds_t5 *= t5xxl_strength
+
+        # combine the embeddings by summing them
+        combined_embeds = embeds_l + embeds_t5
+
+        # offload the model to save memory
+        clip.cond_stage_model.to(offload_device)
+
+        return (combined_embeds,)
     
 class CogVideoTextEncode:
     @classmethod
@@ -663,6 +714,7 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoSampler": CogVideoSampler,
     "CogVideoDecode": CogVideoDecode,
     "CogVideoTextEncode": CogVideoTextEncode,
+    "CogVideoDualTextEncode_311": CogVideoDualTextEncode_311,
     "CogVideoImageEncode": CogVideoImageEncode,
     "CogVideoXFunSampler": CogVideoXFunSampler,
     "CogVideoXFunVid2VidSampler": CogVideoXFunVid2VidSampler
@@ -672,6 +724,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoSampler": "CogVideo Sampler",
     "CogVideoDecode": "CogVideo Decode",
     "CogVideoTextEncode": "CogVideo TextEncode",
+    "CogVideoDualTextEncode_311": "CogVideo DualTextEncode",
     "CogVideoImageEncode": "CogVideo ImageEncode",
     "CogVideoXFunSampler": "CogVideoXFun Sampler",
     "CogVideoXFunVid2VidSampler": "CogVideoXFun Vid2Vid Sampler"
