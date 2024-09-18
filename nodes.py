@@ -3,11 +3,17 @@ import torch
 import folder_paths
 import comfy.model_management as mm
 from comfy.utils import ProgressBar
-from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
+from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler, DDIMScheduler, PNDMScheduler, DPMSolverMultistepScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler
+
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from .pipeline_cogvideox import CogVideoXPipeline
 from contextlib import nullcontext
 
+from .cogvideox_fun.transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFun
+from .cogvideox_fun.autoencoder_magvit import AutoencoderKLCogVideoX as AutoencoderKLCogVideoXFun
+from .cogvideox_fun.utils import get_image_to_video_latent, ASPECT_RATIO_512, get_closest_ratio, to_pil
+from .cogvideox_fun.pipeline_cogvideox_inpaint import CogVideoX_Fun_Pipeline_Inpaint
+from PIL import Image
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,6 +30,7 @@ class DownloadAndLoadCogVideoModel:
                         "THUDM/CogVideoX-2b",
                         "THUDM/CogVideoX-5b",
                         "bertjiazheng/KoolCogVideoX-5b",
+                        "kijai/CogVideoX-Fun-pruned"
                     ],
                 ),
 
@@ -50,10 +57,16 @@ class DownloadAndLoadCogVideoModel:
 
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
 
-        if "2b" in model:
+        if "Fun" in model:
+            base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-5b-InP")
+            if not os.path.exists(base_path):
+                base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideoX-Fun-5b-InP")
+            
+        elif "2b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
         elif "5b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", (model.split("/")[-1]))
+        
 
         if not os.path.exists(base_path):
             log.info(f"Downloading model to: {base_path}")
@@ -65,25 +78,36 @@ class DownloadAndLoadCogVideoModel:
                 local_dir=base_path,
                 local_dir_use_symlinks=False,
             )
+        
+        if "Fun" in model:
+            transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder="transformer")
+        else:
+            transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer")
+        
+        transformer = transformer.to(dtype).to(offload_device)
+        
         if fp8_transformer == "enabled" or fp8_transformer == "fastmode":
-            transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer").to(offload_device)
             if "2b" in model:
                 for name, param in transformer.named_parameters():
                     if name != "pos_embedding":
                         param.data = param.data.to(torch.float8_e4m3fn)
             else:
                 transformer.to(torch.float8_e4m3fn)
-
+        
             if fp8_transformer == "fastmode":
                 from .fp8_optimization import convert_fp8_linear
                 convert_fp8_linear(transformer, dtype)
-        else:
-            transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer").to(dtype).to(offload_device)
 
-        vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
+        if "Fun" in model:
+            vae = AutoencoderKLCogVideoXFun.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
+        else:
+            vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
         scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
 
-        pipe = CogVideoXPipeline(vae, transformer, scheduler)
+        if "Fun" in model:
+            pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler)
+        else:
+            pipe = CogVideoXPipeline(vae, transformer, scheduler)
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
 
@@ -92,7 +116,7 @@ class DownloadAndLoadCogVideoModel:
             pipe.transformer.to(memory_format=torch.channels_last)
             pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
         elif compile == "onediff":
-            from onediffx import compile_pipe, quantize_pipe
+            from onediffx import compile_pipe
             os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
             
             pipe = compile_pipe(
@@ -280,6 +304,7 @@ class CogVideoSampler:
             "optional": {
                 "samples": ("LATENT", ),
                 "denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "image_cond_latents": ("LATENT", ),
             }
         }
 
@@ -288,7 +313,8 @@ class CogVideoSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, steps, cfg, seed, height, width, num_frames, scheduler, t_tile_length, t_tile_overlap, samples=None, denoise_strength=1.0):
+    def process(self, pipeline, positive, negative, steps, cfg, seed, height, width, num_frames, scheduler, t_tile_length, t_tile_overlap, samples=None, 
+                denoise_strength=1.0, image_cond_latents=None):
         mm.soft_empty_cache()
 
         assert t_tile_length > t_tile_overlap, "t_tile_length must be greater than t_tile_overlap"
@@ -328,6 +354,7 @@ class CogVideoSampler:
                 t_tile_overlap = t_tile_overlap,
                 guidance_scale=cfg,
                 latents=samples["samples"] if samples is not None else None,
+                image_cond_latents=image_cond_latents["samples"] if image_cond_latents is not None else None,
                 denoise_strength=denoise_strength,
                 prompt_embeds=positive.to(dtype).to(device),
                 negative_prompt_embeds=negative.to(dtype).to(device),
@@ -387,7 +414,7 @@ class CogVideoDecode:
         latents = latents.to(vae.dtype)
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / vae.config.scaling_factor * latents
-
+       
         frames = vae.decode(latents).sample
         if not pipeline["cpu_offloading"]:
             vae.to(offload_device)
@@ -399,18 +426,127 @@ class CogVideoDecode:
 
         return (video,)
 
+class CogVideoXFunSampler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("COGVIDEOPIPE",),
+                "positive": ("CONDITIONING", ),
+                "negative": ("CONDITIONING", ),
+                "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
+                "base_resolution": (
+                    [ 
+                        512,
+                        768,
+                        960,
+                        1024,
+                    ], {"default": 768}
+                ),
+                "seed": ("INT", {"default": 43, "min": 0, "max": 0xffffffffffffffff}),
+                "steps": ("INT", {"default": 50, "min": 1, "max": 200, "step": 1}),
+                "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
+                "scheduler": (
+                    [ 
+                        "Euler",
+                        "Euler A",
+                        "DPM++",
+                        "PNDM",
+                        "DDIM",
+                    ],
+                    {
+                        "default": 'DDIM'
+                    }
+                )
+            },
+            "optional":{
+                "start_img": ("IMAGE",),
+                "end_img": ("IMAGE",),
+            },
+        }
+    
+    RETURN_TYPES = ("COGVIDEOPIPE", "LATENT",)
+    RETURN_NAMES = ("cogvideo_pipe", "samples",)
+    FUNCTION = "process"
+    CATEGORY = "CogVideoWrapper"
+
+    def process(self, pipeline,  positive, negative, video_length, base_resolution, seed, steps, cfg, scheduler, start_img=None, end_img=None):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        pipe = pipeline["pipe"]
+        dtype = pipeline["dtype"]
+
+        pipe.enable_model_cpu_offload()
+
+        mm.soft_empty_cache()
+
+        start_img = [to_pil(_start_img) for _start_img in start_img] if start_img is not None else None
+        end_img = [to_pil(_end_img) for _end_img in end_img] if end_img is not None else None
+        # Count most suitable height and width
+        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
+        original_width, original_height = start_img[0].size if type(start_img) is list else Image.open(start_img).size
+        closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
+        height, width = [int(x / 16) * 16 for x in closest_size]
+        
+        base_path = pipeline["base_path"]
+
+        # Load Sampler
+        if scheduler == "DPM++":
+            noise_scheduler = DPMSolverMultistepScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "Euler":
+            noise_scheduler = EulerDiscreteScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "Euler A":
+            noise_scheduler = EulerAncestralDiscreteScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "PNDM":
+            noise_scheduler = PNDMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "DDIM":
+            noise_scheduler = DDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        pipe.scheduler = noise_scheduler
+
+        #if not pipeline["cpu_offloading"]:
+        #    pipe.transformer.to(device)
+        generator= torch.Generator(device=device).manual_seed(seed)
+
+        autocastcondition = not pipeline["onediff"]
+        autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
+        with autocast_context:
+            video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
+            input_video, input_video_mask, clip_image = get_image_to_video_latent(start_img, end_img, video_length=video_length, sample_size=(height, width))
+
+            latents = pipe(
+                prompt_embeds=positive.to(dtype).to(device),
+                negative_prompt_embeds=negative.to(dtype).to(device),
+                num_frames = video_length,
+                height      = height,
+                width       = width,
+                generator   = generator,
+                guidance_scale = cfg,
+                num_inference_steps = steps,
+
+                video        = input_video,
+                mask_video   = input_video_mask,
+                comfyui_progressbar = True,
+            )
+        #if not pipeline["cpu_offloading"]:
+       #     pipe.transformer.to(offload_device)
+        mm.soft_empty_cache()
+        print(latents.shape)
+
+        return (pipeline, {"samples": latents})
 
 NODE_CLASS_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": DownloadAndLoadCogVideoModel,
     "CogVideoSampler": CogVideoSampler,
     "CogVideoDecode": CogVideoDecode,
     "CogVideoTextEncode": CogVideoTextEncode,
-    "CogVideoImageEncode": CogVideoImageEncode
+    "CogVideoImageEncode": CogVideoImageEncode,
+    "CogVideoXFunSampler": CogVideoXFunSampler
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
     "CogVideoSampler": "CogVideo Sampler",
     "CogVideoDecode": "CogVideo Decode",
     "CogVideoTextEncode": "CogVideo TextEncode",
-    "CogVideoImageEncode": "CogVideo ImageEncode"
+    "CogVideoImageEncode": "CogVideo ImageEncode",
+    "CogVideoXFunSampler": "CogVideoXFun Sampler"
     }

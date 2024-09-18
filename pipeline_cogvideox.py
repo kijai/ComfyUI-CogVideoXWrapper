@@ -333,6 +333,7 @@ class CogVideoXPipeline(DiffusionPipeline):
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.Tensor] = None,
+        image_cond_latents: Optional[torch.Tensor] = None,
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         device = torch.device("cuda"),
@@ -442,6 +443,20 @@ class CogVideoXPipeline(DiffusionPipeline):
             latents
         )
         latents = latents.to(self.transformer.dtype)
+
+        # 5.5.
+        if image_cond_latents is not None:
+            image_cond_latents = torch.cat(image_cond_latents, dim=0).to(self.transformer.dtype)#.permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
+
+            padding_shape = (
+                batch_size,
+                num_frames - 1,
+                latent_channels,
+                height // self.vae_scale_factor_spatial,
+                width // self.vae_scale_factor_spatial,
+            )
+            latent_padding = torch.zeros(padding_shape, device=device, dtype=self.transformer.dtype)
+            image_latents = torch.cat([image_latents, latent_padding], dim=1)
        
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -581,6 +596,10 @@ class CogVideoXPipeline(DiffusionPipeline):
                 else:
                     latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                    if image_cond_latents is not None:
+                        latent_image_input = torch.cat([image_cond_latents] * 2) if do_classifier_free_guidance else image_cond_latents
+                        latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
 
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
