@@ -434,7 +434,7 @@ class CogVideoXPipeline(DiffusionPipeline):
             num_frames,
             height,
             width,
-            prompt_embeds.dtype,
+            self.vae.dtype,
             device,
             generator,
             timesteps,
@@ -454,7 +454,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                 height // self.vae_scale_factor_spatial,
                 width // self.vae_scale_factor_spatial,
             )
-            latent_padding = torch.zeros(padding_shape, device=device, dtype=self.transformer.dtype)
+            latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae.dtype)
             image_cond_latents = torch.cat([image_cond_latents, latent_padding], dim=1)
        
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline

@@ -242,6 +242,7 @@ class CogVideoTextEncode:
             },
             "optional": {
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
+                "force_offload": ("BOOLEAN", {"default": True}),
             }
         }
 
@@ -250,7 +251,7 @@ class CogVideoTextEncode:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, clip, prompt, strength=1.0):
+    def process(self, clip, prompt, strength=1.0, force_offload=True):
         load_device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
         clip.tokenizer.t5xxl.pad_to_max_length = True
@@ -260,7 +261,8 @@ class CogVideoTextEncode:
 
         embeds = clip.encode_from_tokens(tokens, return_pooled=False, return_dict=False)
         embeds *= strength
-        clip.cond_stage_model.to(offload_device)
+        if force_offload:
+            clip.cond_stage_model.to(offload_device)
 
         return (embeds, )
     
@@ -500,6 +502,10 @@ class CogVideoXFunSampler:
                 "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
                 "base_resolution": (
                     [ 
+                        256,
+                        320,
+                        384,
+                        448,
                         512,
                         768,
                         960,
@@ -622,6 +628,10 @@ class CogVideoXFunVid2VidSampler:
                 "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
                 "base_resolution": (
                     [ 
+                        256,
+                        320,
+                        384,
+                        448,
                         512,
                         768,
                         960,
