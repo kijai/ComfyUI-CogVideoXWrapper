@@ -455,6 +455,8 @@ class CogVideoXFunSampler:
                         "DPM++",
                         "PNDM",
                         "DDIM",
+                        "CogVideoXDDIM",
+                        "CogVideoXDPMScheduler",
                     ],
                     {
                         "default": 'DDIM'
@@ -502,7 +504,11 @@ class CogVideoXFunSampler:
         elif scheduler == "PNDM":
             noise_scheduler = PNDMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
         elif scheduler == "DDIM":
-            noise_scheduler = DDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+            noise_scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "CogVideoXDDIM":
+            noise_scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "CogVideoXDPMScheduler":
+            noise_scheduler = CogVideoXDPMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
         pipe.scheduler = noise_scheduler
 
         #if not pipeline["cpu_offloading"]:
