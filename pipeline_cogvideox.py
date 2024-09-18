@@ -412,7 +412,7 @@ class CogVideoXPipeline(DiffusionPipeline):
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-        prompt_embeds = prompt_embeds.to(self.transformer.dtype)
+        prompt_embeds = prompt_embeds.to(self.vae.dtype)
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
@@ -442,14 +442,11 @@ class CogVideoXPipeline(DiffusionPipeline):
             num_inference_steps,
             latents
         )
-        latents = latents.to(self.transformer.dtype)
+        latents = latents.to(self.vae.dtype)
         print("latents", latents.shape)
 
         # 5.5.
         if image_cond_latents is not None:
-            print("image_cond_latents", image_cond_latents.shape)
-            #image_cond_latents = torch.cat(image_cond_latents, dim=0).to(self.transformer.dtype)#.permute(0, 2, 1, 3, 4)  # [B, F, C, H, W]
-
             padding_shape = (
                 batch_size,
                 (latents.shape[1] - 1),
@@ -457,10 +454,8 @@ class CogVideoXPipeline(DiffusionPipeline):
                 height // self.vae_scale_factor_spatial,
                 width // self.vae_scale_factor_spatial,
             )
-            print("padding_shape", padding_shape)
             latent_padding = torch.zeros(padding_shape, device=device, dtype=self.transformer.dtype)
             image_cond_latents = torch.cat([image_cond_latents, latent_padding], dim=1)
-            print("image_cond_latents", image_cond_latents.shape)
        
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -602,11 +597,7 @@ class CogVideoXPipeline(DiffusionPipeline):
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     if image_cond_latents is not None:
-                        
-                        
                         latent_image_input = torch.cat([image_cond_latents] * 2) if do_classifier_free_guidance else image_cond_latents
-                        print("latent_model_input",latent_model_input.shape)
-                        print("image_cond_latents",image_cond_latents.shape)
                         latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
 
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML

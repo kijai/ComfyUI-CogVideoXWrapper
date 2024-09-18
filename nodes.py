@@ -57,8 +57,8 @@ class DownloadAndLoadCogVideoModel:
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
 
-        if "I2V" in model and fp8_transformer != "disabled":
-            raise NotImplementedError("fp8_transformer is not implemented yet for I2V -model")
+        #if "I2V" in model and fp8_transformer != "disabled":
+        #    raise NotImplementedError("fp8_transformer is not implemented yet for I2V -model")
 
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
 
@@ -99,7 +99,15 @@ class DownloadAndLoadCogVideoModel:
                     if name != "pos_embedding":
                         param.data = param.data.to(torch.float8_e4m3fn)
             else:
-                transformer.to(torch.float8_e4m3fn)
+                for name, param in transformer.named_parameters():
+                    
+                    if "patch_embed" not in name:
+                        param.data = param.data.to(torch.float8_e4m3fn)
+                        
+                    else:
+                        print(name)
+                        print(param.data.dtype)
+                #transformer.to(torch.float8_e4m3fn)
         
             if fp8_transformer == "fastmode":
                 from .fp8_optimization import convert_fp8_linear
@@ -238,6 +246,9 @@ class CogVideoTextEncode:
         return {"required": {
             "clip": ("CLIP",),
             "prompt": ("STRING", {"default": "", "multiline": True} ),
+            },
+            "optional": {
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
             }
         }
 
@@ -246,7 +257,7 @@ class CogVideoTextEncode:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, clip, prompt):
+    def process(self, clip, prompt, strength=1.0):
         load_device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
         clip.tokenizer.t5xxl.pad_to_max_length = True
@@ -255,6 +266,7 @@ class CogVideoTextEncode:
         tokens = clip.tokenize(prompt, return_word_ids=True)
 
         embeds = clip.encode_from_tokens(tokens, return_pooled=False, return_dict=False)
+        embeds *= strength
         clip.cond_stage_model.to(offload_device)
 
         return (embeds, )
