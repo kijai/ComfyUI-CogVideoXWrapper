@@ -11,9 +11,10 @@ from contextlib import nullcontext
 
 from .cogvideox_fun.transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFun
 from .cogvideox_fun.autoencoder_magvit import AutoencoderKLCogVideoX as AutoencoderKLCogVideoXFun
-from .cogvideox_fun.utils import get_image_to_video_latent, ASPECT_RATIO_512, get_closest_ratio, to_pil
+from .cogvideox_fun.utils import get_image_to_video_latent, get_video_to_video_latent, ASPECT_RATIO_512, get_closest_ratio, to_pil
 from .cogvideox_fun.pipeline_cogvideox_inpaint import CogVideoX_Fun_Pipeline_Inpaint
 from PIL import Image
+import numpy as np
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -542,13 +543,125 @@ class CogVideoXFunSampler:
 
         return (pipeline, {"samples": latents})
 
+class CogVideoXFunVid2VidSampler:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "pipeline": ("COGVIDEOPIPE",),
+                "positive": ("CONDITIONING", ),
+                "negative": ("CONDITIONING", ),
+                "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
+                "base_resolution": (
+                    [ 
+                        512,
+                        768,
+                        960,
+                        1024,
+                    ], {"default": 768}
+                ),
+                "seed": ("INT", {"default": 43, "min": 0, "max": 0xffffffffffffffff}),
+                "steps": ("INT", {"default": 50, "min": 1, "max": 200, "step": 1}),
+                "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
+                "scheduler": (
+                    [ 
+                        "Euler",
+                        "Euler A",
+                        "DPM++",
+                        "PNDM",
+                        "DDIM",
+                        "CogVideoXDDIM",
+                        "CogVideoXDPMScheduler",
+                    ],
+                    {
+                        "default": 'DDIM'
+                    }
+                ),
+                "denoise_strength": ("FLOAT", {"default": 0.70, "min": 0.05, "max": 1.00, "step": 0.01}),
+                "validation_video": ("IMAGE",),
+            }
+        }
+    
+    RETURN_TYPES = ("COGVIDEOPIPE", "LATENT",)
+    RETURN_NAMES = ("cogvideo_pipe", "samples",)
+    FUNCTION = "process"
+    CATEGORY = "CogVideoWrapper"
+
+    def process(self, pipeline, positive, negative, video_length, base_resolution, seed, steps, cfg, denoise_strength, scheduler, validation_video):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        pipe = pipeline["pipe"]
+        dtype = pipeline["dtype"]
+
+        pipe.enable_model_cpu_offload()
+
+        mm.soft_empty_cache()
+
+        # Count most suitable height and width
+        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
+        validation_video = np.array(validation_video.cpu().numpy() * 255, np.uint8)
+        original_width, original_height = Image.fromarray(validation_video[0]).size
+        closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
+        height, width = [int(x / 16) * 16 for x in closest_size]
+        
+        base_path = pipeline["base_path"]
+
+        # Load Sampler
+        if scheduler == "DPM++":
+            noise_scheduler = DPMSolverMultistepScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "Euler":
+            noise_scheduler = EulerDiscreteScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "Euler A":
+            noise_scheduler = EulerAncestralDiscreteScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "PNDM":
+            noise_scheduler = PNDMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "DDIM":
+            noise_scheduler = DDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "CogVideoXDDIM":
+            noise_scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "CogVideoXDPMScheduler":
+            noise_scheduler = CogVideoXDPMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        pipe.scheduler = noise_scheduler
+
+        generator= torch.Generator(device).manual_seed(seed)
+
+        autocastcondition = not pipeline["onediff"]
+        autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
+        with autocast_context:
+            video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
+            input_video, input_video_mask, clip_image = get_video_to_video_latent(validation_video, video_length=video_length, sample_size=(height, width))
+
+            # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
+            #     pipeline = merge_lora(pipeline, _lora_path, _lora_weight)
+
+            latents = pipe(
+                prompt_embeds=positive.to(dtype).to(device),
+                negative_prompt_embeds=negative.to(dtype).to(device),
+                num_frames = video_length,
+                height      = height,
+                width       = width,
+                generator   = generator,
+                guidance_scale = cfg,
+                num_inference_steps = steps,
+
+                video        = input_video,
+                mask_video   = input_video_mask,
+                strength = float(denoise_strength),
+                comfyui_progressbar = True,
+            )
+
+            # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
+            #     pipeline = unmerge_lora(pipeline, _lora_path, _lora_weight)
+        return (pipeline, {"samples": latents})
+
 NODE_CLASS_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": DownloadAndLoadCogVideoModel,
     "CogVideoSampler": CogVideoSampler,
     "CogVideoDecode": CogVideoDecode,
     "CogVideoTextEncode": CogVideoTextEncode,
     "CogVideoImageEncode": CogVideoImageEncode,
-    "CogVideoXFunSampler": CogVideoXFunSampler
+    "CogVideoXFunSampler": CogVideoXFunSampler,
+    "CogVideoXFunVid2VidSampler": CogVideoXFunVid2VidSampler
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -556,5 +669,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoDecode": "CogVideo Decode",
     "CogVideoTextEncode": "CogVideo TextEncode",
     "CogVideoImageEncode": "CogVideo ImageEncode",
-    "CogVideoXFunSampler": "CogVideoXFun Sampler"
+    "CogVideoXFunSampler": "CogVideoXFun Sampler",
+    "CogVideoXFunVid2VidSampler": "CogVideoXFun Vid2Vid Sampler"
     }
