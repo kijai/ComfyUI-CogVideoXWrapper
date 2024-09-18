@@ -1,4 +1,14 @@
 # WORK IN PROGRESS
+
+## Update4
+Initial support for the official I2V version of CogVideoX: https://huggingface.co/THUDM/CogVideoX-5b-I2V
+
+For now fp8 mode isn't working with it, also needs diffusers 0.30.3
+
+https://github.com/user-attachments/assets/c672d0af-a676-495d-a42c-7e3dd802b4b0
+
+
+
 ## Update3
 
 Added initial support for CogVideoX-Fun: https://github.com/aigc-apps/CogVideoX-Fun
