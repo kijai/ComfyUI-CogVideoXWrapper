@@ -95,10 +95,12 @@ class DownloadAndLoadCogVideoModel:
                 for name, param in transformer.named_parameters():
                     if name != "pos_embedding":
                         param.data = param.data.to(torch.float8_e4m3fn)
-            else:
+            elif "I2V" in model:
                 for name, param in transformer.named_parameters():
                     if "patch_embed" not in name:
                         param.data = param.data.to(torch.float8_e4m3fn)
+            else:
+                transformer.to(torch.float8_e4m3fn)
         
             if fp8_transformer == "fastmode":
                 from .fp8_optimization import convert_fp8_linear
@@ -557,9 +559,8 @@ class CogVideoXFunSampler:
             original_height = opt_empty_latent["samples"][0].shape[-2] * 8
         closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
         height, width = [int(x / 16) * 16 for x in closest_size]
-        print(f"Closest size: {width}:{height}")
+        print(f"Closest size: {width}x{height}")
         
-            
         base_path = pipeline["base_path"]
 
         # Load Sampler
