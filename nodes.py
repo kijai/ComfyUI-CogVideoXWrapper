@@ -60,14 +60,16 @@ class DownloadAndLoadCogVideoModel:
         if "Fun" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-5b-InP")
             if not os.path.exists(base_path):
-                base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideoX-Fun-5b-InP")
+                download_path = os.path.join(folder_paths.models_dir, "CogVideo")
+                base_path = os.path.join(download_path, "CogVideoX-Fun-5b-InP")
             
         elif "2b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
+            download_path = base_path
         elif "5b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", (model.split("/")[-1]))
+            download_path = base_path
         
-
         if not os.path.exists(base_path):
             log.info(f"Downloading model to: {base_path}")
             from huggingface_hub import snapshot_download
@@ -75,7 +77,7 @@ class DownloadAndLoadCogVideoModel:
             snapshot_download(
                 repo_id=model,
                 ignore_patterns=["*text_encoder*", "*tokenizer*"],
-                local_dir=base_path,
+                local_dir=download_path,
                 local_dir_use_symlinks=False,
             )
         
