@@ -525,6 +525,7 @@ class CogVideoXFunSampler:
             "optional":{
                 "start_img": ("IMAGE",),
                 "end_img": ("IMAGE",),
+                "opt_empty_latent": ("LATENT",),
             },
         }
     
@@ -533,7 +534,8 @@ class CogVideoXFunSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline,  positive, negative, video_length, base_resolution, seed, steps, cfg, scheduler, start_img=None, end_img=None):
+    def process(self, pipeline,  positive, negative, video_length, base_resolution, seed, steps, cfg, scheduler, 
+                start_img=None, end_img=None, opt_empty_latent=None):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -543,14 +545,21 @@ class CogVideoXFunSampler:
 
         mm.soft_empty_cache()
 
-        start_img = [to_pil(_start_img) for _start_img in start_img] if start_img is not None else None
-        end_img = [to_pil(_end_img) for _end_img in end_img] if end_img is not None else None
-        # Count most suitable height and width
-        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
-        original_width, original_height = start_img[0].size if type(start_img) is list else Image.open(start_img).size
+        aspect_ratio_sample_size = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
+
+        if start_img is not None:
+            start_img = [to_pil(_start_img) for _start_img in start_img] if start_img is not None else None
+            end_img = [to_pil(_end_img) for _end_img in end_img] if end_img is not None else None
+            # Count most suitable height and width
+            original_width, original_height = start_img[0].size if type(start_img) is list else Image.open(start_img).size
+        else:
+            original_width = opt_empty_latent["samples"][0].shape[-1] * 8
+            original_height = opt_empty_latent["samples"][0].shape[-2] * 8
         closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
         height, width = [int(x / 16) * 16 for x in closest_size]
+        print(f"Closest size: {width}:{height}")
         
+            
         base_path = pipeline["base_path"]
 
         # Load Sampler
