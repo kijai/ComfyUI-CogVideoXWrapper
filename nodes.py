@@ -2,7 +2,7 @@ import os
 import torch
 import folder_paths
 import comfy.model_management as mm
-from comfy.utils import ProgressBar
+from comfy.utils import ProgressBar, load_torch_file
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler, DDIMScheduler, PNDMScheduler, DPMSolverMultistepScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler
 
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
@@ -504,7 +504,7 @@ class CogVideoXFunSampler:
         elif scheduler == "PNDM":
             noise_scheduler = PNDMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
         elif scheduler == "DDIM":
-            noise_scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+            noise_scheduler = DDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
         elif scheduler == "CogVideoXDDIM":
             noise_scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
         elif scheduler == "CogVideoXDPMScheduler":
