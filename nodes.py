@@ -57,9 +57,6 @@ class DownloadAndLoadCogVideoModel:
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
 
-        #if "I2V" in model and fp8_transformer != "disabled":
-        #    raise NotImplementedError("fp8_transformer is not implemented yet for I2V -model")
-
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
 
         if "Fun" in model:
@@ -100,14 +97,8 @@ class DownloadAndLoadCogVideoModel:
                         param.data = param.data.to(torch.float8_e4m3fn)
             else:
                 for name, param in transformer.named_parameters():
-                    
                     if "patch_embed" not in name:
                         param.data = param.data.to(torch.float8_e4m3fn)
-                        
-                    else:
-                        print(name)
-                        print(param.data.dtype)
-                #transformer.to(torch.float8_e4m3fn)
         
             if fp8_transformer == "fastmode":
                 from .fp8_optimization import convert_fp8_linear
