@@ -1,4 +1,12 @@
 # WORK IN PROGRESS
+## Update3
+
+Added initial support for CogVideoX-Fun: https://github.com/aigc-apps/CogVideoX-Fun
+
+Note that while this one can do image2vid, this is NOT the official I2V model yet, though it should also be released very soon.
+
+https://github.com/user-attachments/assets/68f9ed16-ee53-4955-b931-1799461ac561
+
 
 ## Updade2
 
