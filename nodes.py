@@ -30,6 +30,7 @@ class DownloadAndLoadCogVideoModel:
                     [
                         "THUDM/CogVideoX-2b",
                         "THUDM/CogVideoX-5b",
+                        "THUDM/CogVideoX-5b-I2V",
                         "bertjiazheng/KoolCogVideoX-5b",
                         "kijai/CogVideoX-Fun-pruned"
                     ],
