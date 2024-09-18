@@ -197,7 +197,7 @@
       "widgets_values": [
         "kijai/CogVideoX-Fun-pruned",
         "bf16",
-        "fastmode",
+        "disabled",
         "disabled",
         false
       ]
