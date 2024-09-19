@@ -299,7 +299,7 @@ class CogVideoTextEncodeCombine:
         elif combination_mode == "weighted_average":
             embeds = conditioning_1 * (1 - weighted_average_ratio) + conditioning_2 * weighted_average_ratio
         elif combination_mode == "concatenate":
-            embeds = torch.cat((conditioning_1, conditioning_2), dim=-1)
+            embeds = torch.cat((conditioning_1, conditioning_2), dim=-2)
         else:
             raise ValueError("Invalid combination mode")
 
