@@ -195,7 +195,7 @@
         "Node name for S&R": "DownloadAndLoadCogVideoModel"
       },
       "widgets_values": [
-        "kijai/CogVideoX-Fun-pruned",
+        "kijai/CogVideoX-Fun-5b",
         "bf16",
         "disabled",
         "disabled",
