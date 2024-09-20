@@ -1,0 +1,18 @@
+{
+  "_class_name": "CogVideoXDDIMScheduler",
+  "_diffusers_version": "0.30.0.dev0",
+  "beta_end": 0.012,
+  "beta_schedule": "scaled_linear",
+  "beta_start": 0.00085,
+  "clip_sample": false,
+  "clip_sample_range": 1.0,
+  "num_train_timesteps": 1000,
+  "prediction_type": "v_prediction",
+  "rescale_betas_zero_snr": true,
+  "sample_max_value": 1.0,
+  "set_alpha_to_one": true,
+  "snr_shift_scale": 3.0,
+  "steps_offset": 0,
+  "timestep_spacing": "trailing",
+  "trained_betas": null
+}

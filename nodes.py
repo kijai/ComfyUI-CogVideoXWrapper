@@ -15,11 +15,13 @@ from .cogvideox_fun.utils import get_image_to_video_latent, get_video_to_video_l
 from .cogvideox_fun.pipeline_cogvideox_inpaint import CogVideoX_Fun_Pipeline_Inpaint
 from PIL import Image
 import numpy as np
+import json
 
 import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 log = logging.getLogger(__name__)
 
+script_directory = os.path.dirname(os.path.abspath(__file__))
 
 class DownloadAndLoadCogVideoModel:
     @classmethod
@@ -65,19 +67,23 @@ class DownloadAndLoadCogVideoModel:
             download_path = os.path.join(folder_paths.models_dir, "CogVideo")
             if "2b" in model:
                 base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-2b-InP") # location of the official model
+                scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
                 if not os.path.exists(base_path):
                     base_path = os.path.join(download_path, "CogVideoX-Fun-2b-InP")
             elif "5b" in model:
                 base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-5b-InP") # location of the official model
+                scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
                 if not os.path.exists(base_path):
                     base_path = os.path.join(download_path, "CogVideoX-Fun-5b-InP")
             
         elif "2b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
+            scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
             download_path = base_path
             repo_id = model
         elif "5b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", (model.split("/")[-1]))
+            scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
             download_path = base_path
             repo_id = model
         
@@ -91,7 +97,8 @@ class DownloadAndLoadCogVideoModel:
                 local_dir=download_path,
                 local_dir_use_symlinks=False,
             )
-        
+
+        # transformer
         if "Fun" in model:
             transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder="transformer")
         else:
@@ -114,9 +121,12 @@ class DownloadAndLoadCogVideoModel:
             if fp8_transformer == "fastmode":
                 from .fp8_optimization import convert_fp8_linear
                 convert_fp8_linear(transformer, dtype)
-            
-        scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
 
+        with open(scheduler_path) as f:
+            scheduler_config = json.load(f)
+        scheduler = CogVideoXDDIMScheduler.from_config(scheduler_config)  
+
+        # VAE
         if "Fun" in model:
             vae = AutoencoderKLCogVideoXFun.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
             pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler)
@@ -127,6 +137,7 @@ class DownloadAndLoadCogVideoModel:
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
 
+        # compilation
         if compile == "torch":
             torch._dynamo.config.suppress_errors = True
             pipe.transformer.to(memory_format=torch.channels_last)
@@ -148,7 +159,149 @@ class DownloadAndLoadCogVideoModel:
             "dtype": dtype,
             "base_path": base_path,
             "onediff": True if compile == "onediff" else False,
-            "cpu_offloading": enable_sequential_cpu_offload
+            "cpu_offloading": enable_sequential_cpu_offload,
+            "scheduler_config": scheduler_config
+        }
+
+        return (pipeline,)
+
+class DownloadAndLoadCogVideoGGUFModel:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": (
+                    [
+                        "CogVideoX_5b_GGUF_Q4_0.safetensors",
+                        "CogVideoX_5b_fun_GGUF_Q4_0.safetensors",
+                    ],
+                ),
+            "vae_precision": (["fp16", "fp32", "bf16"], {"default": "bf16", "tooltip": "VAE dtype"}),
+            "fp8_fastmode": ("BOOLEAN", {"default": False, "tooltip": "only supported on 4090 and later GPUs"}),
+            "compile": (["disabled","onediff","torch"], {"tooltip": "UNTESTED WITH GGUF"}),
+            },
+        }
+
+    RETURN_TYPES = ("COGVIDEOPIPE",)
+    RETURN_NAMES = ("cogvideo_pipe", )
+    FUNCTION = "loadmodel"
+    CATEGORY = "CogVideoWrapper"
+
+    def loadmodel(self, model, vae_precision, compile, fp8_fastmode):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        mm.soft_empty_cache()
+
+        vae_dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[vae_precision]
+        download_path = os.path.join(folder_paths.models_dir, 'CogVideo', 'GGUF')
+        gguf_path = os.path.join(folder_paths.models_dir, 'diffusion_models', model) # check MinusZone's model path first
+        if not os.path.exists(gguf_path):
+            gguf_path = os.path.join(download_path, model)
+            if not os.path.exists(gguf_path):
+                log.info(f"Downloading model to: {gguf_path}")
+                from huggingface_hub import snapshot_download
+
+                snapshot_download(
+                    repo_id="MinusZoneAI/ComfyUI-CogVideoX-MZ",
+                    allow_patterns=[f"*{model}*"],
+                    local_dir=download_path,
+                    local_dir_use_symlinks=False,
+                )
+        
+        
+        with open(os.path.join(script_directory, 'configs', 'transformer_config_5b.json')) as f:
+                    transformer_config = json.load(f)
+        sd = load_torch_file(gguf_path)
+
+        from . import mz_gguf_loader
+        import importlib
+        importlib.reload(mz_gguf_loader)
+        
+        with mz_gguf_loader.quantize_lazy_load():
+            if "fun" in model:
+                transformer_config["in_channels"] = 33
+                transformer = CogVideoXTransformer3DModelFun.from_config(transformer_config)
+            else:
+                transformer_config["in_channels"] = 16
+                transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
+
+            transformer.to(torch.float8_e4m3fn)
+            transformer = mz_gguf_loader.quantize_load_state_dict(transformer, sd, device="cpu")
+            transformer.to(device)
+        
+        # transformer
+        # if fp8_transformer == "fastmode":
+        #     if "2b" in model:
+        #         for name, param in transformer.named_parameters():
+        #             if name != "pos_embedding":
+        #                 param.data = param.data.to(torch.float8_e4m3fn)
+        #     elif "I2V" in model:
+        #         for name, param in transformer.named_parameters():
+        #             if "patch_embed" not in name:
+        #                 param.data = param.data.to(torch.float8_e4m3fn)
+        #     else:
+        #         transformer.to(torch.float8_e4m3fn)
+        
+        if fp8_fastmode:
+           from .fp8_optimization import convert_fp8_linear
+           convert_fp8_linear(transformer, vae_dtype)
+
+        scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
+        with open(scheduler_path) as f:
+            scheduler_config = json.load(f)
+        
+        scheduler = CogVideoXDDIMScheduler.from_config(scheduler_config, subfolder="scheduler")
+
+        # VAE
+        vae_dl_path = os.path.join(folder_paths.models_dir, 'CogVideo', 'VAE')
+        vae_path = os.path.join(vae_dl_path, "cogvideox_vae.safetensors")
+        if not os.path.exists(vae_path):
+            log.info(f"Downloading VAE model to: {vae_path}")
+            from huggingface_hub import snapshot_download
+
+            snapshot_download(
+                repo_id="Kijai/CogVideoX-Fun-pruned",
+                allow_patterns=["*cogvideox_vae.safetensors*"],
+                local_dir=vae_dl_path,
+                local_dir_use_symlinks=False,
+            )
+        with open(os.path.join(script_directory, 'configs', 'vae_config.json')) as f:
+            vae_config = json.load(f)
+        
+        vae_sd = load_torch_file(vae_path)
+        if "fun" in model:
+            vae = AutoencoderKLCogVideoXFun.from_config(vae_config).to(vae_dtype).to(offload_device)
+            vae.load_state_dict(vae_sd)
+            pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler)
+        else:
+            vae = AutoencoderKLCogVideoX.from_config(vae_config).to(vae_dtype).to(offload_device)
+            vae.load_state_dict(vae_sd)
+            pipe = CogVideoXPipeline(vae, transformer, scheduler)
+
+        # compilation
+        if compile == "torch":
+            torch._dynamo.config.suppress_errors = True
+            pipe.transformer.to(memory_format=torch.channels_last)
+            pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+        elif compile == "onediff":
+            from onediffx import compile_pipe
+            os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
+            
+            pipe = compile_pipe(
+            pipe,
+            backend="nexfort",
+            options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
+            ignores=["vae"],
+            fuse_qkv_projections=True,
+            )
+
+        pipeline = {
+            "pipe": pipe,
+            "dtype": vae_dtype,
+            "base_path": "Fun" if "fun" in model else "sad",
+            "onediff": True if compile == "onediff" else False,
+            "cpu_offloading": False,
+            "scheduler_config": scheduler_config
         }
 
         return (pipeline,)
@@ -523,6 +676,7 @@ class CogVideoDecode:
         latents = 1 / vae.config.scaling_factor * latents
        
         frames = vae.decode(latents).sample
+        vae.disable_tiling()
         if not pipeline["cpu_offloading"]:
             vae.to(offload_device)
         mm.soft_empty_cache()
@@ -597,20 +751,21 @@ class CogVideoXFunSampler:
             original_height = opt_empty_latent["samples"][0].shape[-2] * 8
         
         # Load Sampler
+        scheduler_config = pipeline["scheduler_config"]
         if scheduler == "DPM++":
-            noise_scheduler = DPMSolverMultistepScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+            noise_scheduler = DPMSolverMultistepScheduler.from_config(scheduler_config)
         elif scheduler == "Euler":
-            noise_scheduler = EulerDiscreteScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+            noise_scheduler = EulerDiscreteScheduler.from_config(scheduler_config)
         elif scheduler == "Euler A":
-            noise_scheduler = EulerAncestralDiscreteScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+            noise_scheduler = EulerAncestralDiscreteScheduler.from_config(scheduler_config)
         elif scheduler == "PNDM":
-            noise_scheduler = PNDMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+            noise_scheduler = PNDMScheduler.from_config(scheduler_config)
         elif scheduler == "DDIM":
-            noise_scheduler = DDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+            noise_scheduler = DDIMScheduler.from_config(scheduler_config)
         elif scheduler == "CogVideoXDDIM":
-            noise_scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+            noise_scheduler = CogVideoXDDIMScheduler.from_config(scheduler_config)
         elif scheduler == "CogVideoXDPMScheduler":
-            noise_scheduler = CogVideoXDPMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+            noise_scheduler = CogVideoXDPMScheduler.from_config(scheduler_config)
         pipe.scheduler = noise_scheduler
 
         #if not pipeline["cpu_offloading"]:
@@ -755,7 +910,8 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoImageEncode": CogVideoImageEncode,
     "CogVideoXFunSampler": CogVideoXFunSampler,
     "CogVideoXFunVid2VidSampler": CogVideoXFunVid2VidSampler,
-    "CogVideoTextEncodeCombine": CogVideoTextEncodeCombine
+    "CogVideoTextEncodeCombine": CogVideoTextEncodeCombine,
+    "DownloadAndLoadCogVideoGGUFModel": DownloadAndLoadCogVideoGGUFModel
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -766,5 +922,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoImageEncode": "CogVideo ImageEncode",
     "CogVideoXFunSampler": "CogVideoXFun Sampler",
     "CogVideoXFunVid2VidSampler": "CogVideoXFun Vid2Vid Sampler",
-    "CogVideoTextEncodeCombine": "CogVideo TextEncode Combine"
+    "CogVideoTextEncodeCombine": "CogVideo TextEncode Combine",
+    "DownloadAndLoadCogVideoGGUFModel": "(Down)load CogVideo GGUF Model"
     }
