@@ -523,6 +523,7 @@ class CogVideoDecode:
         latents = 1 / vae.config.scaling_factor * latents
        
         frames = vae.decode(latents).sample
+        vae.disable_tiling()
         if not pipeline["cpu_offloading"]:
             vae.to(offload_device)
         mm.soft_empty_cache()
