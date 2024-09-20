@@ -232,19 +232,6 @@ class DownloadAndLoadCogVideoGGUFModel:
             else:
                 transformer.to(device)
         
-        # transformer
-        # if fp8_transformer == "fastmode":
-        #     if "2b" in model:
-        #         for name, param in transformer.named_parameters():
-        #             if name != "pos_embedding":
-        #                 param.data = param.data.to(torch.float8_e4m3fn)
-        #     elif "I2V" in model:
-        #         for name, param in transformer.named_parameters():
-        #             if "patch_embed" not in name:
-        #                 param.data = param.data.to(torch.float8_e4m3fn)
-        #     else:
-        #         transformer.to(torch.float8_e4m3fn)
-        
         if fp8_fastmode:
            from .fp8_optimization import convert_fp8_linear
            convert_fp8_linear(transformer, vae_dtype)
@@ -677,7 +664,7 @@ class CogVideoDecode:
         latents = latents.to(vae.dtype)
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / vae.config.scaling_factor * latents
-       
+        vae._clear_fake_context_parallel_cache()
         frames = vae.decode(latents).sample
         vae.disable_tiling()
         if not pipeline["cpu_offloading"]:
