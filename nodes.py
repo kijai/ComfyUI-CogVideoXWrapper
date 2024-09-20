@@ -576,16 +576,16 @@ class CogVideoSampler:
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
         dtype = pipeline["dtype"]
-        
+        scheduler_config = pipeline["scheduler_config"]
         
         if not pipeline["cpu_offloading"]:
             pipe.transformer.to(device)
         generator = torch.Generator(device=device).manual_seed(seed)
 
         if scheduler == "DDIM" or scheduler == "DDIM_tiled":
-            pipe.scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder="scheduler")
+            pipe.scheduler = CogVideoXDDIMScheduler.from_config(scheduler_config)
         elif scheduler == "DPM":
-            pipe.scheduler = CogVideoXDPMScheduler.from_pretrained(base_path, subfolder="scheduler")
+            pipe.scheduler = CogVideoXDPMScheduler.from_config(scheduler_config)
 
         if negative.shape[1] < positive.shape[1]:
             target_length = positive.shape[1]
