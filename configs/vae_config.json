@@ -1,0 +1,39 @@
+{
+  "_class_name": "AutoencoderKLCogVideoX",
+  "_diffusers_version": "0.31.0.dev0",
+  "act_fn": "silu",
+  "block_out_channels": [
+    128,
+    256,
+    256,
+    512
+  ],
+  "down_block_types": [
+    "CogVideoXDownBlock3D",
+    "CogVideoXDownBlock3D",
+    "CogVideoXDownBlock3D",
+    "CogVideoXDownBlock3D"
+  ],
+  "force_upcast": true,
+  "in_channels": 3,
+  "latent_channels": 16,
+  "latents_mean": null,
+  "latents_std": null,
+  "layers_per_block": 3,
+  "norm_eps": 1e-06,
+  "norm_num_groups": 32,
+  "out_channels": 3,
+  "sample_height": 480,
+  "sample_width": 720,
+  "scaling_factor": 0.7,
+  "shift_factor": null,
+  "temporal_compression_ratio": 4,
+  "up_block_types": [
+    "CogVideoXUpBlock3D",
+    "CogVideoXUpBlock3D",
+    "CogVideoXUpBlock3D",
+    "CogVideoXUpBlock3D"
+  ],
+  "use_post_quant_conv": false,
+  "use_quant_conv": false
+}
