@@ -209,7 +209,7 @@ class CogVideoX_Fun_Pipeline_Inpaint(DiffusionPipeline):
     """
 
     _optional_components = []
-    model_cpu_offload_seq = "text_encoder->vae->transformer->vae"
+    model_cpu_offload_seq = ">vae->transformer->vae"
 
     _callback_tensor_inputs = [
         "latents",
@@ -631,7 +631,7 @@ class CogVideoX_Fun_Pipeline_Inpaint(DiffusionPipeline):
 
         device = self._execution_device
 
-        self.vae.to(device)
+        #self.vae.to(device)
 
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`

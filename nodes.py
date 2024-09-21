@@ -727,7 +727,8 @@ class CogVideoXFunSampler:
         base_path = pipeline["base_path"]
         assert "Fun" in base_path, "'Unfun' models not supported in 'CogVideoXFunSampler', use the 'CogVideoSampler'"
 
-        pipe.enable_model_cpu_offload(device=device)
+        if not pipeline["cpu_offloading"]:
+            pipe.enable_model_cpu_offload(device=device)
 
         mm.soft_empty_cache()
 
