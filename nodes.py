@@ -3,7 +3,7 @@ import torch
 import folder_paths
 import comfy.model_management as mm
 from comfy.utils import ProgressBar, load_torch_file
-from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler, DDIMScheduler, PNDMScheduler, DPMSolverMultistepScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler
+from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler, DDIMScheduler, PNDMScheduler, DPMSolverMultistepScheduler, EulerDiscreteScheduler, EulerAncestralDiscreteScheduler, LCMScheduler, UniPCMultistepScheduler
 
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from .pipeline_cogvideox import CogVideoXPipeline
@@ -698,6 +698,8 @@ class CogVideoXFunSampler:
                         "DPM++",
                         "PNDM",
                         "DDIM",
+                        "LCM",
+                        "UniPC",
                         "CogVideoXDDIM",
                         "CogVideoXDPMScheduler",
                     ],
@@ -753,6 +755,10 @@ class CogVideoXFunSampler:
             noise_scheduler = PNDMScheduler.from_config(scheduler_config)
         elif scheduler == "DDIM":
             noise_scheduler = DDIMScheduler.from_config(scheduler_config)
+        elif scheduler == "LCM":
+            noise_scheduler = LCMScheduler.from_config(scheduler_config)
+        elif scheduler == "UniPC":
+            noise_scheduler = UniPCMultistepScheduler.from_config(scheduler_config)
         elif scheduler == "CogVideoXDDIM":
             noise_scheduler = CogVideoXDDIMScheduler.from_config(scheduler_config)
         elif scheduler == "CogVideoXDPMScheduler":
@@ -811,6 +817,8 @@ class CogVideoXFunVid2VidSampler:
                         "DPM++",
                         "PNDM",
                         "DDIM",
+                        "LCM",
+                        "UniPC",
                         "CogVideoXDDIM",
                         "CogVideoXDPMScheduler",
                     ],
@@ -855,6 +863,10 @@ class CogVideoXFunVid2VidSampler:
             noise_scheduler = PNDMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
         elif scheduler == "DDIM":
             noise_scheduler = DDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "LCM":
+            noise_scheduler = LCMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
+        elif scheduler == "UniPC":
+            noise_scheduler = UniPCMultistepScheduler.from_pretrained(base_path, subfolder= 'scheduler')
         elif scheduler == "CogVideoXDDIM":
             noise_scheduler = CogVideoXDDIMScheduler.from_pretrained(base_path, subfolder= 'scheduler')
         elif scheduler == "CogVideoXDPMScheduler":
