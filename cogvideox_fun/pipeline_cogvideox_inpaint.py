@@ -21,7 +21,6 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn.functional as F
 from einops import rearrange
-from transformers import T5EncoderModel, T5Tokenizer
 
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
