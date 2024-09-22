@@ -299,7 +299,7 @@ class DownloadAndLoadCogVideoModel:
             backend="nexfort",
             options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
             ignores=["vae"],
-            fuse_qkv_projections=True,
+            fuse_qkv_projections=True if pab_config is None else False,
             )
 
         pipeline = {
