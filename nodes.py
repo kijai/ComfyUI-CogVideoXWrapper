@@ -148,7 +148,7 @@ class CogVideoPABConfig:
                temporal_broadcast, temporal_threshold_start, temporal_threshold_end, temporal_range, 
                cross_broadcast, cross_threshold_start, cross_threshold_end, cross_range, steps):
         
-        #os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
         pab_config = CogVideoXPABConfig(
             steps=steps, 
             spatial_broadcast=spatial_broadcast, 
