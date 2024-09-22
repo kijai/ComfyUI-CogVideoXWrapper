@@ -217,8 +217,8 @@ class DownloadAndLoadCogVideoGGUFModel:
         with open(os.path.join(script_directory, 'configs', 'transformer_config_5b.json')) as f:
                     transformer_config = json.load(f)
         sd = load_torch_file(gguf_path)
-        for key, value in sd.items():
-            print(key, value.shape, value.dtype)
+        # for key, value in sd.items():
+        #     print(key, value.shape, value.dtype)
 
         from . import mz_gguf_loader
         import importlib
