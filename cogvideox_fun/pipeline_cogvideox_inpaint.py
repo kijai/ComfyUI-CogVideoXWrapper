@@ -33,6 +33,10 @@ from diffusers.video_processor import VideoProcessor
 from diffusers.image_processor import VaeImageProcessor
 from einops import rearrange
 
+from ..videosys.core.pipeline import VideoSysPipeline
+from ..videosys.cogvideox_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelPAB
+from ..videosys.core.pab_mgr import set_pab_manager
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -191,7 +195,7 @@ class CogVideoX_Fun_PipelineOutput(BaseOutput):
     videos: torch.Tensor
 
 
-class CogVideoX_Fun_Pipeline_Inpaint(DiffusionPipeline):
+class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
 
@@ -221,6 +225,7 @@ class CogVideoX_Fun_Pipeline_Inpaint(DiffusionPipeline):
         vae: AutoencoderKLCogVideoX,
         transformer: CogVideoXTransformer3DModel,
         scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
+        pab_config = None
     ):
         super().__init__()
 
@@ -241,6 +246,9 @@ class CogVideoX_Fun_Pipeline_Inpaint(DiffusionPipeline):
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
         )
+
+        if pab_config is not None:
+            set_pab_manager(pab_config)
 
     def prepare_latents(
         self, 

@@ -36,6 +36,7 @@ from .pipeline_cogvideox import CogVideoXPipeline
 from contextlib import nullcontext
 
 from .cogvideox_fun.transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFun
+from .cogvideox_fun.fun_pab_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFunPAB
 from .cogvideox_fun.autoencoder_magvit import AutoencoderKLCogVideoX as AutoencoderKLCogVideoXFun
 from .cogvideox_fun.utils import get_image_to_video_latent, get_video_to_video_latent, ASPECT_RATIO_512, get_closest_ratio, to_pil
 from .cogvideox_fun.pipeline_cogvideox_inpaint import CogVideoX_Fun_Pipeline_Inpaint
@@ -241,7 +242,10 @@ class DownloadAndLoadCogVideoModel:
 
         # transformer
         if "Fun" in model:
-            transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder="transformer")
+            if pab_config is not None:
+                transformer = CogVideoXTransformer3DModelFunPAB.from_pretrained(base_path, subfolder="transformer")
+            else:
+                transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder="transformer")
         else:
             if pab_config is not None:
                 transformer = CogVideoXTransformer3DModelPAB.from_pretrained(base_path, subfolder="transformer")
@@ -273,7 +277,7 @@ class DownloadAndLoadCogVideoModel:
         # VAE
         if "Fun" in model:
             vae = AutoencoderKLCogVideoXFun.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
-            pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler)
+            pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler, pab_config=pab_config)
         else:
             vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
             pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)
@@ -383,7 +387,10 @@ class DownloadAndLoadCogVideoGGUFModel:
         with mz_gguf_loader.quantize_lazy_load():
             if "fun" in model:
                 transformer_config["in_channels"] = 33
-                transformer = CogVideoXTransformer3DModelFun.from_config(transformer_config)
+                if pab_config is not None:
+                    transformer = CogVideoXTransformer3DModelFunPAB.from_config(transformer_config)
+                else:
+                    transformer = CogVideoXTransformer3DModelFun.from_config(transformer_config)
             elif "I2V" in model:
                 transformer_config["in_channels"] = 32
                 transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
@@ -438,7 +445,7 @@ class DownloadAndLoadCogVideoGGUFModel:
         if "fun" in model:
             vae = AutoencoderKLCogVideoXFun.from_config(vae_config).to(vae_dtype).to(offload_device)
             vae.load_state_dict(vae_sd)
-            pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler)
+            pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler, pab_config=pab_config)
         else:
             vae = AutoencoderKLCogVideoX.from_config(vae_config).to(vae_dtype).to(offload_device)
             vae.load_state_dict(vae_sd)

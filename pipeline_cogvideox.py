@@ -161,7 +161,6 @@ class CogVideoXPipeline(VideoSysPipeline):
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
         if pab_config is not None:
-            print(pab_config)
             set_pab_manager(pab_config)
 
     def prepare_latents(
