@@ -119,6 +119,7 @@ class CogVideoPABConfig:
     RETURN_NAMES = ("pab_config", )
     FUNCTION = "config"
     CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "EXPERIMENTAL:Pyramid Attention Broadcast (PAB) speeds up inference by mitigating redundant attention computation"
 
     def config(self, spatial_broadcast, pab_threshold_start, pab_threshold_end, pab_range, steps):
         

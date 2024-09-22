@@ -8,7 +8,6 @@
 # diffusers: https://github.com/huggingface/diffusers
 # --------------------------------------------------------
 
-from functools import partial
 from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
@@ -22,13 +21,11 @@ from diffusers.utils import is_torch_version
 from diffusers.utils.torch_utils import maybe_allow_in_graph
 from torch import nn
 
-from .core.comm import all_to_all_comm, gather_sequence, get_pad, set_pad, split_sequence
 from .core.pab_mgr import enable_pab, if_broadcast_spatial
-#from .core.parallel_mgr import ParallelManager
 from .modules.embeddings import apply_rotary_emb
-from .utils.utils import batch_func
 
 from .modules.embeddings import CogVideoXPatchEmbed
+
 from .modules.normalization import AdaLayerNorm, CogVideoXLayerNormZero
 
 
