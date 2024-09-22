@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.models.attention import Attention, FeedForward
-from diffusers.models.embeddings import TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
+from diffusers.models.embeddings import TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed, CogVideoXPatchEmbed
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils import is_torch_version
@@ -24,7 +24,7 @@ from torch import nn
 from .core.pab_mgr import enable_pab, if_broadcast_spatial
 from .modules.embeddings import apply_rotary_emb
 
-from .modules.embeddings import CogVideoXPatchEmbed
+#from .modules.embeddings import CogVideoXPatchEmbed
 
 from .modules.normalization import AdaLayerNorm, CogVideoXLayerNormZero
 
@@ -407,6 +407,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         spatial_interpolation_scale: float = 1.875,
         temporal_interpolation_scale: float = 1.0,
         use_rotary_positional_embeddings: bool = False,
+        use_learned_positional_embeddings: bool = False,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -417,7 +418,22 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         self.num_patches = post_patch_height * post_patch_width * post_time_compression_frames
 
         # 1. Patch embedding
-        self.patch_embed = CogVideoXPatchEmbed(patch_size, in_channels, inner_dim, text_embed_dim, bias=True)
+        self.patch_embed = CogVideoXPatchEmbed(
+            patch_size=patch_size,
+            in_channels=in_channels,
+            embed_dim=inner_dim,
+            text_embed_dim=text_embed_dim,
+            bias=True,
+            sample_width=sample_width,
+            sample_height=sample_height,
+            sample_frames=sample_frames,
+            temporal_compression_ratio=temporal_compression_ratio,
+            max_text_seq_length=max_text_seq_length,
+            spatial_interpolation_scale=spatial_interpolation_scale,
+            temporal_interpolation_scale=temporal_interpolation_scale,
+            use_positional_embeddings=not use_rotary_positional_embeddings,
+            use_learned_positional_embeddings=use_learned_positional_embeddings,
+        )
         self.embedding_dropout = nn.Dropout(dropout)
 
         # 2. 3D positional embeddings
@@ -590,7 +606,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
         # 6. Unpatchify
         p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
+        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
         output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
 
         #if self.parallel_manager.cp_size > 1:

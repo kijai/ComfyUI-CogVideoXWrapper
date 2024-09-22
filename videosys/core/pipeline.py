@@ -1,11 +1,8 @@
 import inspect
 from abc import abstractmethod
-from dataclasses import dataclass
 
 import torch
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.utils import BaseOutput
-
 
 class VideoSysPipeline(DiffusionPipeline):
     def __init__(self):
@@ -45,8 +42,3 @@ class VideoSysPipeline(DiffusionPipeline):
                 optional_parameters.remove(name)
 
         return expected_modules, optional_parameters
-
-
-@dataclass
-class VideoSysPipelineOutput(BaseOutput):
-    video: torch.Tensor
