@@ -175,11 +175,13 @@ class DownloadAndLoadCogVideoGGUFModel:
                         "CogVideoX_5b_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_I2V_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_GGUF_Q4_0.safetensors",
+                        #"CogVideoX_2b_fun_GGUF_Q4_0.safetensors"
                     ],
                 ),
             "vae_precision": (["fp16", "fp32", "bf16"], {"default": "bf16", "tooltip": "VAE dtype"}),
             "fp8_fastmode": ("BOOLEAN", {"default": False, "tooltip": "only supported on 4090 and later GPUs"}),
             "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
+            "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
             },
         }
 
@@ -188,7 +190,7 @@ class DownloadAndLoadCogVideoGGUFModel:
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
 
-    def loadmodel(self, model, vae_precision, fp8_fastmode, load_device):
+    def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
@@ -213,17 +215,24 @@ class DownloadAndLoadCogVideoGGUFModel:
                     local_dir_use_symlinks=False,
                 )
         
-        
-        with open(os.path.join(script_directory, 'configs', 'transformer_config_5b.json')) as f:
-                    transformer_config = json.load(f)
+        if "5b" in model:
+            scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
+            transformer_path = os.path.join(script_directory, 'configs', 'transformer_config_5b.json')
+        elif "2b" in model:
+            scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
+            transformer_path = os.path.join(script_directory, 'configs', 'transformer_config_2b.json')
+    
+        with open(transformer_path) as f:
+            transformer_config = json.load(f)
+
         sd = load_torch_file(gguf_path)
-        # for key, value in sd.items():
-        #     print(key, value.shape, value.dtype)
+        #for key, value in sd.items():
+        #    print(key, value.shape, value.dtype)
 
         from . import mz_gguf_loader
         import importlib
         importlib.reload(mz_gguf_loader)
-        
+
         with mz_gguf_loader.quantize_lazy_load():
             if "fun" in model:
                 transformer_config["in_channels"] = 33
@@ -235,7 +244,14 @@ class DownloadAndLoadCogVideoGGUFModel:
                 transformer_config["in_channels"] = 16
                 transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
 
-            transformer.to(torch.float8_e4m3fn)
+            if "2b" in model:
+                for name, param in transformer.named_parameters():
+                    if name != "pos_embedding":
+                        param.data = param.data.to(torch.float8_e4m3fn)
+                    else:
+                        param.data = param.data.to(torch.float16)
+            else:
+                transformer.to(torch.float8_e4m3fn)
             transformer = mz_gguf_loader.quantize_load_state_dict(transformer, sd, device="cpu")
             if load_device == "offload_device":
                 transformer.to(offload_device)
@@ -246,7 +262,7 @@ class DownloadAndLoadCogVideoGGUFModel:
            from .fp8_optimization import convert_fp8_linear
            convert_fp8_linear(transformer, vae_dtype)
 
-        scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
+        
         with open(scheduler_path) as f:
             scheduler_config = json.load(f)
         
@@ -279,28 +295,31 @@ class DownloadAndLoadCogVideoGGUFModel:
             pipe = CogVideoXPipeline(vae, transformer, scheduler)
 
         # compilation
-        if compile == "torch":
-            torch._dynamo.config.suppress_errors = True
-            pipe.transformer.to(memory_format=torch.channels_last)
-            pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
-        elif compile == "onediff":
-            from onediffx import compile_pipe
-            os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
+        # if compile == "torch":
+        #     torch._dynamo.config.suppress_errors = True
+        #     pipe.transformer.to(memory_format=torch.channels_last)
+        #     pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+        # elif compile == "onediff":
+        #     from onediffx import compile_pipe
+        #     os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
             
-            pipe = compile_pipe(
-            pipe,
-            backend="nexfort",
-            options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
-            ignores=["vae"],
-            fuse_qkv_projections=True,
-            )
+        #     pipe = compile_pipe(
+        #     pipe,
+        #     backend="nexfort",
+        #     options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
+        #     ignores=["vae"],
+        #     fuse_qkv_projections=True,
+        #     )
+
+        if enable_sequential_cpu_offload:
+            pipe.enable_sequential_cpu_offload()
 
         pipeline = {
             "pipe": pipe,
             "dtype": vae_dtype,
             "base_path": "Fun" if "fun" in model else "sad",
             "onediff": True if compile == "onediff" else False,
-            "cpu_offloading": False,
+            "cpu_offloading": enable_sequential_cpu_offload,
             "scheduler_config": scheduler_config
         }
 
