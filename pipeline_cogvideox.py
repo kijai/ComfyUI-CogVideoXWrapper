@@ -32,6 +32,10 @@ from comfy.utils import ProgressBar
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+from .videosys.core.pipeline import VideoSysPipeline
+from .videosys.cogvideox_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelPAB
+from .videosys.core.pab_mgr import set_pab_manager
+
 def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
     tw = tgt_width
     th = tgt_height
@@ -108,7 +112,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-class CogVideoXPipeline(DiffusionPipeline):
+class CogVideoXPipeline(VideoSysPipeline):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
 
@@ -137,9 +141,10 @@ class CogVideoXPipeline(DiffusionPipeline):
     def __init__(
         self,
         vae: AutoencoderKLCogVideoX,
-        transformer: CogVideoXTransformer3DModel,
+        transformer: Union[CogVideoXTransformer3DModel, CogVideoXTransformer3DModelPAB],
         scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
-        original_mask = None
+        original_mask = None,
+        pab_config = None
     ):
         super().__init__()
 
@@ -154,6 +159,10 @@ class CogVideoXPipeline(DiffusionPipeline):
         )
         self.original_mask = original_mask
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+
+        if pab_config is not None:
+            print(pab_config)
+            set_pab_manager(pab_config)
 
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, timesteps, denoise_strength, num_inference_steps, latents=None, 
