@@ -3,6 +3,18 @@ import torch
 import folder_paths
 import comfy.model_management as mm
 from comfy.utils import ProgressBar, load_torch_file
+
+import importlib.metadata
+
+def check_diffusers_version():
+    try:
+        version = importlib.metadata.version('diffusers')
+        required_version = '0.30.3'
+        if version < required_version:
+            raise AssertionError(f"diffusers version {version} is installed, but version {required_version} or higher is required.")
+    except importlib.metadata.PackageNotFoundError:
+        raise AssertionError("diffusers is not installed.")
+
 from diffusers.schedulers import (
     CogVideoXDDIMScheduler, 
     CogVideoXDPMScheduler, 
@@ -198,6 +210,9 @@ class DownloadAndLoadCogVideoModel:
     CATEGORY = "CogVideoWrapper"
 
     def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None):
+        
+        check_diffusers_version()
+
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
@@ -342,6 +357,9 @@ class DownloadAndLoadCogVideoGGUFModel:
     CATEGORY = "CogVideoWrapper"
 
     def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload, pab_config=None):
+
+        check_diffusers_version()
+
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
