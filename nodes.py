@@ -188,7 +188,7 @@ class CogVideoTransformerEdit:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {
-            "remove_blocks": ("STRING", {"default": "40", "multiline": True, "tooltip": "Comma separated list of block indices to remove, 5b blocks: 0-41, 2b model blocks 0-29"} ),
+            "remove_blocks": ("STRING", {"default": "15, 25, 37", "multiline": True, "tooltip": "Comma separated list of block indices to remove, 5b blocks: 0-41, 2b model blocks 0-29"} ),
             }
         }
 

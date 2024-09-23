@@ -451,7 +451,7 @@ class CogVideoXPipeline(VideoSysPipeline):
             latents
         )
         latents = latents.to(self.vae.dtype)
-        print("latents", latents.shape)
+        #print("latents", latents.shape)
 
         # 5.5.
         if image_cond_latents is not None:
@@ -500,7 +500,7 @@ class CogVideoXPipeline(VideoSysPipeline):
         else:
             temporal_tiling = False
             print("Temporal tiling disabled")
-        print("latents.shape", latents.shape)
+        #print("latents.shape", latents.shape)
         
         with self.progress_bar(total=num_inference_steps) as progress_bar:    
             old_pred_original_sample = None # for DPM-solver++
