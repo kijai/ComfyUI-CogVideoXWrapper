@@ -393,7 +393,10 @@ class DownloadAndLoadCogVideoGGUFModel:
                     transformer = CogVideoXTransformer3DModelFun.from_config(transformer_config)
             elif "I2V" in model:
                 transformer_config["in_channels"] = 32
-                transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
+                if pab_config is not None:
+                    transformer = CogVideoXTransformer3DModelPAB.from_config(transformer_config)
+                else:
+                    transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
             else:
                 transformer_config["in_channels"] = 16
                 if pab_config is not None:
