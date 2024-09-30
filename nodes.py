@@ -52,6 +52,7 @@ from .cogvideox_fun.fun_pab_transformer_3d import CogVideoXTransformer3DModel as
 from .cogvideox_fun.autoencoder_magvit import AutoencoderKLCogVideoX as AutoencoderKLCogVideoXFun
 from .cogvideox_fun.utils import get_image_to_video_latent, get_video_to_video_latent, ASPECT_RATIO_512, get_closest_ratio, to_pil
 from .cogvideox_fun.pipeline_cogvideox_inpaint import CogVideoX_Fun_Pipeline_Inpaint
+from .cogvideox_fun.pipeline_cogvideox_control import CogVideoX_Fun_Pipeline_Control
 from PIL import Image
 import numpy as np
 import json
@@ -216,6 +217,10 @@ class DownloadAndLoadCogVideoModel:
                         "bertjiazheng/KoolCogVideoX-5b",
                         "kijai/CogVideoX-Fun-2b",
                         "kijai/CogVideoX-Fun-5b",
+                        "alibaba-pai/CogVideoX-Fun-V1.1-2b-InP",
+                        "alibaba-pai/CogVideoX-Fun-V1.1-5b-InP",
+                        "alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose",
+                        "alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose",
                     ],
                 ),
 
@@ -246,31 +251,38 @@ class DownloadAndLoadCogVideoModel:
         mm.soft_empty_cache()
 
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
-
+        download_path = os.path.join(folder_paths.models_dir, "CogVideo")
         if "Fun" in model:
-            repo_id = "kijai/CogVideoX-Fun-pruned"
-            download_path = os.path.join(folder_paths.models_dir, "CogVideo")
-            if "2b" in model:
-                base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-2b-InP") # location of the official model
-                scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
+            if not "1.1" in model:
+                repo_id = "kijai/CogVideoX-Fun-pruned"
+                if "2b" in model:
+                    base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-2b-InP") # location of the official model
+                    if not os.path.exists(base_path):
+                        base_path = os.path.join(download_path, "CogVideoX-Fun-2b-InP")
+                elif "5b" in model:
+                    base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-5b-InP") # location of the official model
+                    if not os.path.exists(base_path):
+                        base_path = os.path.join(download_path, "CogVideoX-Fun-5b-InP")
+            elif "1.1" in model:
+                repo_id = model
+                base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", (model.split("/")[-1])) # location of the official model
                 if not os.path.exists(base_path):
-                    base_path = os.path.join(download_path, "CogVideoX-Fun-2b-InP")
-            elif "5b" in model:
-                base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-5b-InP") # location of the official model
-                scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
-                if not os.path.exists(base_path):
-                    base_path = os.path.join(download_path, "CogVideoX-Fun-5b-InP")
-            
+                    base_path = os.path.join(download_path, (model.split("/")[-1]))
+                download_path = base_path
+
         elif "2b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", "CogVideo2B")
-            scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
             download_path = base_path
             repo_id = model
         elif "5b" in model:
             base_path = os.path.join(folder_paths.models_dir, "CogVideo", (model.split("/")[-1]))
-            scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
             download_path = base_path
             repo_id = model
+
+        if "2b" in model:
+            scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
+        elif "5b" in model:
+            scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
         
         if not os.path.exists(base_path):
             log.info(f"Downloading model to: {base_path}")
@@ -323,7 +335,10 @@ class DownloadAndLoadCogVideoModel:
         # VAE
         if "Fun" in model:
             vae = AutoencoderKLCogVideoXFun.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
-            pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler, pab_config=pab_config)
+            if "Pose" in model:
+                pipe = CogVideoX_Fun_Pipeline_Control(vae, transformer, scheduler, pab_config=pab_config)
+            else:
+                pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler, pab_config=pab_config)
         else:
             vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
             pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)
@@ -369,7 +384,7 @@ class DownloadAndLoadCogVideoGGUFModel:
                         "CogVideoX_5b_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_I2V_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_GGUF_Q4_0.safetensors",
-                        #"CogVideoX_2b_fun_GGUF_Q4_0.safetensors"
+                        "CogVideoX_5b_fun_1_1_GGUF_Q4_0.safetensors"
                     ],
                 ),
             "vae_precision": (["fp16", "fp32", "bf16"], {"default": "bf16", "tooltip": "VAE dtype"}),
@@ -967,6 +982,7 @@ class CogVideoXFunSampler:
                 "start_img": ("IMAGE",),
                 "end_img": ("IMAGE",),
                 "opt_empty_latent": ("LATENT",),
+                "noise_aug_strength": ("FLOAT", {"default": 0.0563, "min": 0.0, "max": 1.0, "step": 0.001}),
             },
         }
     
@@ -976,7 +992,7 @@ class CogVideoXFunSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, pipeline,  positive, negative, video_length, base_resolution, seed, steps, cfg, scheduler, 
-                start_img=None, end_img=None, opt_empty_latent=None):
+                start_img=None, end_img=None, opt_empty_latent=None, noise_aug_strength=0.0563):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -1034,6 +1050,7 @@ class CogVideoXFunSampler:
                 video        = input_video,
                 mask_video   = input_video_mask,
                 comfyui_progressbar = True,
+                noise_aug_strength = noise_aug_strength,
             )
         #if not pipeline["cpu_offloading"]:
         #     pipe.transformer.to(offload_device)
@@ -1084,8 +1101,11 @@ class CogVideoXFunVid2VidSampler:
                     }
                 ),
                 "denoise_strength": ("FLOAT", {"default": 0.70, "min": 0.05, "max": 1.00, "step": 0.01}),
+            },
+             "optional":{
                 "validation_video": ("IMAGE",),
-            }
+                "control_video": ("IMAGE",),
+            },
         }
     
     RETURN_TYPES = ("COGVIDEOPIPE", "LATENT",)
@@ -1093,7 +1113,7 @@ class CogVideoXFunVid2VidSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, video_length, base_resolution, seed, steps, cfg, denoise_strength, scheduler, validation_video):
+    def process(self, pipeline, positive, negative, video_length, base_resolution, seed, steps, cfg, denoise_strength, scheduler, validation_video=None, control_video=None):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -1109,8 +1129,14 @@ class CogVideoXFunVid2VidSampler:
 
         # Count most suitable height and width
         aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
-        validation_video = np.array(validation_video.cpu().numpy() * 255, np.uint8)
-        original_width, original_height = Image.fromarray(validation_video[0]).size
+
+        if validation_video is not None:
+            validation_video = np.array(validation_video.cpu().numpy() * 255, np.uint8)
+            original_width, original_height = Image.fromarray(validation_video[0]).size
+        elif control_video is not None:
+            control_video = np.array(control_video.cpu().numpy() * 255, np.uint8)
+            original_width, original_height = Image.fromarray(control_video[0]).size
+
         closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
         height, width = [int(x / 16) * 16 for x in closest_size]
 
@@ -1128,26 +1154,38 @@ class CogVideoXFunVid2VidSampler:
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
             video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
-            input_video, input_video_mask, clip_image = get_video_to_video_latent(validation_video, video_length=video_length, sample_size=(height, width))
+            if validation_video is not None:
+                input_video, input_video_mask, clip_image = get_video_to_video_latent(validation_video, video_length=video_length, sample_size=(height, width))
+            elif control_video is not None:
+                input_video, input_video_mask, clip_image = get_video_to_video_latent(control_video, video_length=video_length, sample_size=(height, width))
 
             # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
             #     pipeline = merge_lora(pipeline, _lora_path, _lora_weight)
 
-            latents = pipe(
-                prompt_embeds=positive.to(dtype).to(device),
-                negative_prompt_embeds=negative.to(dtype).to(device),
-                num_frames = video_length,
-                height      = height,
-                width       = width,
-                generator   = generator,
-                guidance_scale = cfg,
-                num_inference_steps = steps,
+            common_params = {
+                "prompt_embeds": positive.to(dtype).to(device),
+                "negative_prompt_embeds": negative.to(dtype).to(device),
+                "num_frames": video_length,
+                "height": height,
+                "width": width,
+                "generator": generator,
+                "guidance_scale": cfg,
+                "num_inference_steps": steps,
+                "comfyui_progressbar": True,
+            }
 
-                video        = input_video,
-                mask_video   = input_video_mask,
-                strength = float(denoise_strength),
-                comfyui_progressbar = True,
-            )
+            if control_video is not None:
+                latents = pipe(
+                    **common_params,
+                    control_video=input_video
+                )
+            else:
+                latents = pipe(
+                    **common_params,
+                    video=input_video,
+                    mask_video=input_video_mask,
+                    strength=float(denoise_strength)
+                )
 
             # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
             #     pipeline = unmerge_lora(pipeline, _lora_path, _lora_weight)
