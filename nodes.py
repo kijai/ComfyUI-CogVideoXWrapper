@@ -417,7 +417,7 @@ class DownloadAndLoadCogVideoGGUFModel:
         if not os.path.exists(gguf_path):
             gguf_path = os.path.join(download_path, model)
             if not os.path.exists(gguf_path):
-                if "I2V" in model:
+                if "I2V" in model or "1_1" in model:
                     repo_id = "Kijai/CogVideoX_GGUF"
                 else:
                     repo_id = "MinusZoneAI/ComfyUI-CogVideoX-MZ"
