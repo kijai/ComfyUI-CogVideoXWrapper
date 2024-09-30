@@ -1105,6 +1105,9 @@ class CogVideoXFunVid2VidSampler:
              "optional":{
                 "validation_video": ("IMAGE",),
                 "control_video": ("IMAGE",),
+                "control_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
+                "control_start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "control_end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
         }
     
@@ -1113,7 +1116,8 @@ class CogVideoXFunVid2VidSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, video_length, base_resolution, seed, steps, cfg, denoise_strength, scheduler, validation_video=None, control_video=None):
+    def process(self, pipeline, positive, negative, video_length, base_resolution, seed, steps, cfg, denoise_strength, scheduler, 
+                validation_video=None, control_video=None, control_strength=1.0, control_start_percent=0.0, control_end_percent=1.0):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -1177,7 +1181,10 @@ class CogVideoXFunVid2VidSampler:
             if control_video is not None:
                 latents = pipe(
                     **common_params,
-                    control_video=input_video
+                    control_video=input_video,
+                    control_strength=control_strength,
+                    control_start_percent=control_start_percent,
+                    control_end_percent=control_end_percent
                 )
             else:
                 latents = pipe(
