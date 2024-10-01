@@ -749,7 +749,7 @@
       "widgets_values": [
         "CogVideoX_5b_fun_1_1_Pose_GGUF_Q4_0.safetensors",
         "bf16",
-        true,
+        false,
         "main_device",
         false
       ]
