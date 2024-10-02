@@ -936,18 +936,7 @@ class CogVideoXFunSampler:
                 "positive": ("CONDITIONING", ),
                 "negative": ("CONDITIONING", ),
                 "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
-                "base_resolution": (
-                    [ 
-                        256,
-                        320,
-                        384,
-                        448,
-                        512,
-                        768,
-                        960,
-                        1024,
-                    ], {"default": 768}
-                ),
+                "base_resolution": ("INT", {"min": 256, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
                 "seed": ("INT", {"default": 43, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 50, "min": 1, "max": 200, "step": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
@@ -1060,9 +1049,7 @@ class CogVideoXFunVid2VidSampler:
                 "positive": ("CONDITIONING", ),
                 "negative": ("CONDITIONING", ),
                 "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
-                "base_resolution": (
-                    [256,320,384,448,512,768,960,1024,], {"default": 512}
-                ),
+                "base_resolution": ("INT", {"min": 256, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 25, "min": 1, "max": 200, "step": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
