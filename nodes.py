@@ -35,6 +35,7 @@ scheduler_mapping = {
     "Euler A": EulerAncestralDiscreteScheduler,
     "PNDM": PNDMScheduler,
     "DDIM": DDIMScheduler,
+    "DDIM_tiled": CogVideoXDDIMScheduler,
     "CogVideoXDDIM": CogVideoXDDIMScheduler,
     "CogVideoXDPMScheduler": CogVideoXDPMScheduler,
     "SASolverScheduler": SASolverScheduler,
@@ -1244,6 +1245,7 @@ class CogVideoXFunControlSampler:
                         "DEISMultistepScheduler",
                         "CogVideoXDDIM",
                         "CogVideoXDPMScheduler",
+                        "DDIM_tiled",
                     ],
                     {
                         "default": 'DDIM'
@@ -1252,6 +1254,9 @@ class CogVideoXFunControlSampler:
                 "control_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "control_start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "control_end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "t_tile_length": ("INT", {"default": 48, "min": 2, "max": 128, "step": 1, "tooltip": "Length of temporal tiles for extending generations, only in effect with the tiled samplers"}),
+                "t_tile_overlap": ("INT", {"default": 8, "min": 2, "max": 128, "step": 1, "tooltip": "Overlap of temporal tiling"}),
+
             },
         }
     
@@ -1261,7 +1266,7 @@ class CogVideoXFunControlSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, pipeline, positive, negative, seed, steps, cfg, scheduler, 
-                control_latents, control_strength=1.0, control_start_percent=0.0, control_end_percent=1.0):
+                control_latents, control_strength=1.0, control_start_percent=0.0, control_end_percent=1.0, t_tile_length=16, t_tile_overlap=8,):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -1309,7 +1314,10 @@ class CogVideoXFunControlSampler:
                 control_video=control_latents["latents"],
                 control_strength=control_strength,
                 control_start_percent=control_start_percent,
-                control_end_percent=control_end_percent
+                control_end_percent=control_end_percent,
+                t_tile_length=t_tile_length,
+                t_tile_overlap=t_tile_overlap,
+                scheduler_name=scheduler
             )
 
             # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
