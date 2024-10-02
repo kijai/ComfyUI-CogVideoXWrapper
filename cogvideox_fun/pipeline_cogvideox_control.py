@@ -590,26 +590,29 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
         if comfyui_progressbar:
             pbar.update(1)
 
-        if control_video is not None:
-            video_length = control_video.shape[2]
-            control_video = self.image_processor.preprocess(rearrange(control_video, "b c f h w -> (b f) c h w"), height=height, width=width) 
-            control_video = control_video.to(dtype=torch.float32)
-            control_video = rearrange(control_video, "(b f) c h w -> b c f h w", f=video_length)
-        else:
-            control_video = None
-        control_video_latents = self.prepare_control_latents(
-            None,
-            control_video,
-            batch_size,
-            height,
-            width,
-            self.vae.dtype,
-            device,
-            generator,
-            do_classifier_free_guidance
-        )[1]
+        # if control_video is not None:
+        #     video_length = control_video.shape[2]
+        #     control_video = self.image_processor.preprocess(rearrange(control_video, "b c f h w -> (b f) c h w"), height=height, width=width) 
+        #     control_video = control_video.to(dtype=torch.float32)
+        #     control_video = rearrange(control_video, "(b f) c h w -> b c f h w", f=video_length)
+        # else:
+        #     control_video = None
+
+        # control_video_latents = self.prepare_control_latents(
+        #     None,
+        #     control_video,
+        #     batch_size,
+        #     height,
+        #     width,
+        #     self.vae.dtype,
+        #     device,
+        #     generator,
+        #     do_classifier_free_guidance
+        # )[1]
+
+
         control_video_latents_input = (
-            torch.cat([control_video_latents] * 2) if do_classifier_free_guidance else control_video_latents
+            torch.cat([control_video] * 2) if do_classifier_free_guidance else control_video
         )
         control_latents = rearrange(control_video_latents_input, "b c f h w -> b f c h w")
 

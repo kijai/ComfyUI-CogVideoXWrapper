@@ -3,7 +3,7 @@ import torch
 import folder_paths
 import comfy.model_management as mm
 from comfy.utils import ProgressBar, load_torch_file
-
+from einops import rearrange
 import importlib.metadata
 
 def check_diffusers_version():
@@ -1160,7 +1160,78 @@ class CogVideoXFunVid2VidSampler:
             # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
             #     pipeline = unmerge_lora(pipeline, _lora_path, _lora_weight)
         return (pipeline, {"samples": latents})
-    
+
+
+class CogVideoControlImageEncode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "pipeline": ("COGVIDEOPIPE",),
+            "control_video": ("IMAGE", ),
+            "base_resolution": ("INT", {"min": 256, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
+            "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
+            },
+        }
+
+    RETURN_TYPES = ("COGCONTROL_LATENTS",)
+    RETURN_NAMES = ("control_latents",)
+    FUNCTION = "encode"
+    CATEGORY = "CogVideoWrapper"
+
+    def encode(self, pipeline, control_video, base_resolution, enable_tiling):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+
+        B, H, W, C = control_video.shape
+
+        vae = pipeline["pipe"].vae
+        vae.enable_slicing()
+
+        if enable_tiling:
+            from .mz_enable_vae_encode_tiling import enable_vae_encode_tiling
+            enable_vae_encode_tiling(vae)
+
+        if not pipeline["cpu_offloading"]:
+            vae.to(device)
+
+        # Count most suitable height and width
+        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
+
+        control_video = np.array(control_video.cpu().numpy() * 255, np.uint8)
+        original_width, original_height = Image.fromarray(control_video[0]).size
+
+        closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
+        height, width = [int(x / 16) * 16 for x in closest_size]
+        
+        video_length = int((B - 1) // vae.config.temporal_compression_ratio * vae.config.temporal_compression_ratio) + 1 if B != 1 else 1
+        input_video, input_video_mask, clip_image = get_video_to_video_latent(control_video, video_length=video_length, sample_size=(height, width))
+
+        control_video = pipeline["pipe"].image_processor.preprocess(rearrange(input_video, "b c f h w -> (b f) c h w"), height=height, width=width) 
+        control_video = control_video.to(dtype=torch.float32)
+        control_video = rearrange(control_video, "(b f) c h w -> b c f h w", f=video_length)
+
+        masked_image = control_video.to(device=device, dtype=vae.dtype)
+        bs = 1
+        new_mask_pixel_values = []
+        for i in range(0, masked_image.shape[0], bs):
+            mask_pixel_values_bs = masked_image[i : i + bs]
+            mask_pixel_values_bs = vae.encode(mask_pixel_values_bs)[0]
+            mask_pixel_values_bs = mask_pixel_values_bs.mode()
+            new_mask_pixel_values.append(mask_pixel_values_bs)
+        masked_image_latents = torch.cat(new_mask_pixel_values, dim = 0)
+        masked_image_latents = masked_image_latents * vae.config.scaling_factor      
+
+        vae.to(offload_device)
+
+        control_latents = {
+            "latents": masked_image_latents,
+            "num_frames" : B,
+            "height" : height,
+            "width" : width,
+        }
+        
+        return (control_latents, )
+        
 class CogVideoXFunControlSampler:
     @classmethod
     def INPUT_TYPES(s):
@@ -1169,10 +1240,7 @@ class CogVideoXFunControlSampler:
                 "pipeline": ("COGVIDEOPIPE",),
                 "positive": ("CONDITIONING", ),
                 "negative": ("CONDITIONING", ),
-                "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
-                "base_resolution": (
-                    [256,320,384,448,512,768,960,1024,], {"default": 512}
-                ),
+                "control_latents": ("COGCONTROL_LATENTS",),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 25, "min": 1, "max": 200, "step": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
@@ -1194,7 +1262,6 @@ class CogVideoXFunControlSampler:
                         "default": 'DDIM'
                     }
                 ),
-                "control_video": ("IMAGE",),
                 "control_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "control_start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "control_end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
@@ -1206,8 +1273,8 @@ class CogVideoXFunControlSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, video_length, base_resolution, seed, steps, cfg, scheduler, 
-                control_video=None, control_strength=1.0, control_start_percent=0.0, control_end_percent=1.0):
+    def process(self, pipeline, positive, negative, seed, steps, cfg, scheduler, 
+                control_latents, control_strength=1.0, control_start_percent=0.0, control_end_percent=1.0):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -1220,15 +1287,6 @@ class CogVideoXFunControlSampler:
             pipe.enable_model_cpu_offload(device=device)
 
         mm.soft_empty_cache()
-
-        # Count most suitable height and width
-        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
-
-        control_video = np.array(control_video.cpu().numpy() * 255, np.uint8)
-        original_width, original_height = Image.fromarray(control_video[0]).size
-
-        closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
-        height, width = [int(x / 16) * 16 for x in closest_size]
 
         # Load Sampler
         scheduler_config = pipeline["scheduler_config"]
@@ -1243,8 +1301,6 @@ class CogVideoXFunControlSampler:
         autocastcondition = not pipeline["onediff"]
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
-            video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
-            input_video, input_video_mask, clip_image = get_video_to_video_latent(control_video, video_length=video_length, sample_size=(height, width))
 
             # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
             #     pipeline = merge_lora(pipeline, _lora_path, _lora_weight)
@@ -1252,9 +1308,9 @@ class CogVideoXFunControlSampler:
             common_params = {
                 "prompt_embeds": positive.to(dtype).to(device),
                 "negative_prompt_embeds": negative.to(dtype).to(device),
-                "num_frames": video_length,
-                "height": height,
-                "width": width,
+                "num_frames": control_latents["num_frames"],
+                "height": control_latents["height"],
+                "width": control_latents["width"],
                 "generator": generator,
                 "guidance_scale": cfg,
                 "num_inference_steps": steps,
@@ -1263,7 +1319,7 @@ class CogVideoXFunControlSampler:
 
             latents = pipe(
                 **common_params,
-                control_video=input_video,
+                control_video=control_latents["latents"],
                 control_strength=control_strength,
                 control_start_percent=control_start_percent,
                 control_end_percent=control_end_percent
@@ -1286,7 +1342,8 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoTextEncodeCombine": CogVideoTextEncodeCombine,
     "DownloadAndLoadCogVideoGGUFModel": DownloadAndLoadCogVideoGGUFModel,
     "CogVideoPABConfig": CogVideoPABConfig,
-    "CogVideoTransformerEdit": CogVideoTransformerEdit
+    "CogVideoTransformerEdit": CogVideoTransformerEdit,
+    "CogVideoControlImageEncode": CogVideoControlImageEncode
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -1301,5 +1358,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoTextEncodeCombine": "CogVideo TextEncode Combine",
     "DownloadAndLoadCogVideoGGUFModel": "(Down)load CogVideo GGUF Model",
     "CogVideoPABConfig": "CogVideo PABConfig",
-    "CogVideoTransformerEdit": "CogVideo TransformerEdit"
+    "CogVideoTransformerEdit": "CogVideo TransformerEdit",
+    "CogVideoControlImageEncode": "CogVideo Control ImageEncode"
     }
