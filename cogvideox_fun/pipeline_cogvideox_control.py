@@ -689,9 +689,7 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                         )
 
                         latents_tile = latents[:, input_start_t:input_end_t,:, :, :]
-                        print("latents_tile.shape", latents_tile.shape)
                         control_latents_tile = control_latents[:, input_start_t:input_end_t, :, :, :]
-                        print("control_latents_tile.shape", control_latents_tile.shape)
 
                         latent_model_input_tile = torch.cat([latents_tile] * 2) if do_classifier_free_guidance else latents_tile
                         latent_model_input_tile = self.scheduler.scale_model_input(latent_model_input_tile, t)
@@ -730,8 +728,6 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
 
                         input_start_t = ofs_t
                         input_end_t = ofs_t + t_tile_length
-                        print("input_start_t, input_end_t", input_start_t, input_end_t, latents_all.shape)
-                        print("t_tile_weights.shape", t_tile_weights.shape)
 
                         latents_all[:, input_start_t:input_end_t,:, :, :] += latents_all_list[t_i] * t_tile_weights
                         contributors[:, input_start_t:input_end_t,:, :, :] += t_tile_weights
