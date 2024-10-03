@@ -47,6 +47,7 @@ scheduler_mapping = {
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from .pipeline_cogvideox import CogVideoXPipeline
 from contextlib import nullcontext
+from pathlib import Path
 
 from .cogvideox_fun.transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFun
 from .cogvideox_fun.fun_pab_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFunPAB
@@ -54,6 +55,7 @@ from .cogvideox_fun.autoencoder_magvit import AutoencoderKLCogVideoX as Autoenco
 from .cogvideox_fun.utils import get_image_to_video_latent, get_video_to_video_latent, ASPECT_RATIO_512, get_closest_ratio, to_pil
 from .cogvideox_fun.pipeline_cogvideox_inpaint import CogVideoX_Fun_Pipeline_Inpaint
 from .cogvideox_fun.pipeline_cogvideox_control import CogVideoX_Fun_Pipeline_Control
+from .cogvideox_fun.lora_utils import merge_lora, unmerge_lora
 from PIL import Image
 import numpy as np
 import json
@@ -204,6 +206,34 @@ class CogVideoTransformerEdit:
         blocks_to_remove = [int(x.strip()) for x in remove_blocks.split(',')]
         log.info(f"Blocks selected for removal: {blocks_to_remove}")
         return (blocks_to_remove,)
+
+
+folder_paths.add_model_folder_path("cogvideox_loras", os.path.join(folder_paths.models_dir, "CogVideo", "loras"))
+
+class CogVideoLoraSelect:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+               "lora": (folder_paths.get_filename_list("cogvideox_loras"), 
+                {"tooltip": "LORA models are expected to be in ComfyUI/models/CogVideo/loras with .safetensors extension"}),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
+            },
+        }
+
+    RETURN_TYPES = ("COGLORA",)
+    RETURN_NAMES = ("lora", )
+    FUNCTION = "getlorapath"
+    CATEGORY = "CogVideoWrapper"
+
+    def getlorapath(self, lora, strength):
+
+        cog_lora = {
+            "path": folder_paths.get_full_path("cogvideox_loras", lora),
+            "strength": strength
+        }
+
+        return (cog_lora,)
     
 class DownloadAndLoadCogVideoModel:
     @classmethod
@@ -235,6 +265,7 @@ class DownloadAndLoadCogVideoModel:
                 "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
                 "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
+                "lora": ("COGLORA", {"default": None}),
             }
         }
 
@@ -243,7 +274,7 @@ class DownloadAndLoadCogVideoModel:
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
 
-    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None, block_edit=None):
+    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None):
         
         check_diffusers_version()
 
@@ -343,6 +374,14 @@ class DownloadAndLoadCogVideoModel:
         else:
             vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
             pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)
+
+        if lora is not None:
+            if lora['strength'] > 0:
+                logging.info(f"Merging LoRA weights from {lora['path']} with strength {lora['strength']}")
+                pipe = merge_lora(pipe, lora["path"], lora["strength"])
+            else:
+                logging.info(f"Removing LoRA weights from {lora['path']} with strength {lora['strength']}")
+                pipe = unmerge_lora(pipe, lora["path"], lora["strength"])
 
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
@@ -1190,6 +1229,7 @@ class CogVideoControlImageEncode:
 
         closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
         height, width = [int(x / 16) * 16 for x in closest_size]
+        log.info(f"Closest bucket size: {width}x{height}")
         
         video_length = int((B - 1) // vae.config.temporal_compression_ratio * vae.config.temporal_compression_ratio) + 1 if B != 1 else 1
         input_video, input_video_mask, clip_image = get_video_to_video_latent(control_video, video_length=video_length, sample_size=(height, width))
@@ -1294,9 +1334,6 @@ class CogVideoXFunControlSampler:
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
 
-            # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
-            #     pipeline = merge_lora(pipeline, _lora_path, _lora_weight)
-
             common_params = {
                 "prompt_embeds": positive.to(dtype).to(device),
                 "negative_prompt_embeds": negative.to(dtype).to(device),
@@ -1320,8 +1357,6 @@ class CogVideoXFunControlSampler:
                 scheduler_name=scheduler
             )
 
-            # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
-            #     pipeline = unmerge_lora(pipeline, _lora_path, _lora_weight)
         return (pipeline, {"samples": latents})
 
 NODE_CLASS_MAPPINGS = {
@@ -1338,7 +1373,8 @@ NODE_CLASS_MAPPINGS = {
     "DownloadAndLoadCogVideoGGUFModel": DownloadAndLoadCogVideoGGUFModel,
     "CogVideoPABConfig": CogVideoPABConfig,
     "CogVideoTransformerEdit": CogVideoTransformerEdit,
-    "CogVideoControlImageEncode": CogVideoControlImageEncode
+    "CogVideoControlImageEncode": CogVideoControlImageEncode,
+    "CogVideoLoraSelect": CogVideoLoraSelect
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -1354,5 +1390,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoGGUFModel": "(Down)load CogVideo GGUF Model",
     "CogVideoPABConfig": "CogVideo PABConfig",
     "CogVideoTransformerEdit": "CogVideo TransformerEdit",
-    "CogVideoControlImageEncode": "CogVideo Control ImageEncode"
+    "CogVideoControlImageEncode": "CogVideo Control ImageEncode",
+    "CogVideoLoraSelect": "CogVideo LoraSelect"
     }
