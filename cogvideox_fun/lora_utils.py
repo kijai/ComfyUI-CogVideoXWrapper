@@ -366,7 +366,7 @@ def create_network(
     )
     return network
 
-def merge_lora(pipeline, lora_path, multiplier, device='cpu', dtype=torch.float32, state_dict=None, transformer_only=False):
+def merge_lora(transformer, lora_path, multiplier, device='cpu', dtype=torch.float32, state_dict=None):
     LORA_PREFIX_TRANSFORMER = "lora_unet"
     LORA_PREFIX_TEXT_ENCODER = "lora_te"
     if state_dict is None:
@@ -380,15 +380,15 @@ def merge_lora(pipeline, lora_path, multiplier, device='cpu', dtype=torch.float3
 
     for layer, elems in updates.items():
 
-        if "lora_te" in layer:
-            if transformer_only:
-                continue
-            else:
-                layer_infos = layer.split(LORA_PREFIX_TEXT_ENCODER + "_")[-1].split("_")
-                curr_layer = pipeline.text_encoder
-        else:
-            layer_infos = layer.split(LORA_PREFIX_TRANSFORMER + "_")[-1].split("_")
-            curr_layer = pipeline.transformer
+        # if "lora_te" in layer:
+        #     if transformer_only:
+        #         continue
+        #     else:
+        #         layer_infos = layer.split(LORA_PREFIX_TEXT_ENCODER + "_")[-1].split("_")
+        #         curr_layer = pipeline.text_encoder
+        #else:
+        layer_infos = layer.split(LORA_PREFIX_TRANSFORMER + "_")[-1].split("_")
+        curr_layer = transformer
 
         temp_name = layer_infos.pop(0)
         while len(layer_infos) > -1:
@@ -421,7 +421,7 @@ def merge_lora(pipeline, lora_path, multiplier, device='cpu', dtype=torch.float3
         else:
             curr_layer.weight.data += multiplier * alpha * torch.mm(weight_up, weight_down)
 
-    return pipeline
+    return transformer
 
 # TODO: Refactor with merge_lora.
 def unmerge_lora(pipeline, lora_path, multiplier=1, device="cpu", dtype=torch.float32):
