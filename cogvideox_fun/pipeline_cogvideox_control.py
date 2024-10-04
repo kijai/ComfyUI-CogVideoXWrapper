@@ -214,7 +214,7 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
             set_pab_manager(pab_config)
 
     def prepare_latents(
-        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
+        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, timesteps, denoise_strength, num_inference_steps, latents=None, 
     ):
         shape = (
             batch_size,
@@ -228,15 +228,28 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-
+        noise = randn_tensor(shape, generator=generator, device=device, dtype=self.vae.dtype)
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = noise
         else:
             latents = latents.to(device)
+            timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, denoise_strength, device)
+            latent_timestep = timesteps[:1]
+            
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=self.vae.dtype)
+            frames_needed = noise.shape[1]
+            current_frames = latents.shape[1]
+            
+            if frames_needed > current_frames:
+                repeat_factor = frames_needed // current_frames
+                additional_frame = torch.randn((latents.size(0), repeat_factor, latents.size(2), latents.size(3), latents.size(4)), dtype=latents.dtype, device=latents.device)
+                latents = torch.cat((latents, additional_frame), dim=1)
+            elif frames_needed < current_frames:
+                latents = latents[:, :frames_needed, :, :, :]
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
-        return latents
+            latents = self.scheduler.add_noise(latents, noise, latent_timestep)
+        latents = latents * self.scheduler.init_noise_sigma # scale the initial noise by the standard deviation required by the scheduler
+        return latents, timesteps, noise
 
     def prepare_control_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance
@@ -452,6 +465,7 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 6,
         use_dynamic_cfg: bool = False,
+        denoise_strength: float = 1.0,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -601,7 +615,7 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
 
         # 5. Prepare latents.
         latent_channels = self.vae.config.latent_channels
-        latents = self.prepare_latents(
+        latents, timesteps, noise = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             latent_channels,
             num_frames,
@@ -610,6 +624,9 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
             self.vae.dtype,
             device,
             generator,
+            timesteps,
+            denoise_strength,
+            num_inference_steps,
             latents,
         )
         if comfyui_progressbar:
