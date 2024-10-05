@@ -742,6 +742,12 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                     latents_all_list = []
                     # =====================================================
 
+                    image_rotary_emb = (
+                            self._prepare_rotary_positional_embeddings(height, width, context_frames, device)
+                            if self.transformer.config.use_rotary_positional_embeddings
+                            else None
+                        )
+
                     for t_i in range(grid_ts):
                         if t_i < grid_ts - 1:
                             ofs_t = max(t_i * t_tile_length - t_tile_overlap * t_i, 0)
@@ -750,12 +756,6 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
 
                         input_start_t = ofs_t
                         input_end_t = ofs_t + t_tile_length
-
-                        image_rotary_emb = (
-                            self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device, input_start_t, input_end_t)
-                            if self.transformer.config.use_rotary_positional_embeddings
-                            else None
-                        )
 
                         latents_tile = latents[:, input_start_t:input_end_t,:, :, :]
                         control_latents_tile = control_latents[:, input_start_t:input_end_t, :, :, :]
@@ -832,14 +832,20 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                     if do_classifier_free_guidance:
                         noise_uncond = torch.zeros_like(latent_model_input)
 
-                    for c in context_queue:
-                        partial_latent_model_input = latent_model_input[:, c, :, :, :]
-                        partial_control_latents = current_control_latents[:, c, :, :, :]
-                        image_rotary_emb = (
-                            self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device, context_frames=c)
+                    image_rotary_emb = (
+                            self._prepare_rotary_positional_embeddings(height, width, context_frames, device)
                             if self.transformer.config.use_rotary_positional_embeddings
                             else None
                         )
+
+                    for c in context_queue:
+                        partial_latent_model_input = latent_model_input[:, c, :, :, :]
+                        partial_control_latents = current_control_latents[:, c, :, :, :]
+                        # image_rotary_emb = (
+                        #     self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device, context_frames=c)
+                        #     if self.transformer.config.use_rotary_positional_embeddings
+                        #     else None
+                        # )
 
                         # predict noise model_output
                         noise_pred[:, c, :, :, :] += self.transformer(
