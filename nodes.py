@@ -1280,8 +1280,8 @@ class CogVideoContextOptions:
         return {"required": {
             "context_schedule": (["uniform_standard", "uniform_looped", "static_standard", "temporal_tiling"],),
             "context_frames": ("INT", {"default": 12, "min": 2, "max": 100, "step": 1, "tooltip": "Number of pixel frames in the context, NOTE: the latent space has 4 frames in 1"} ),
-            "context_stride": ("INT", {"default": 4, "min": 4, "max": 10, "step": 1, "tooltip": "Context stride as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
-            "context_overlap": ("INT", {"default": 4, "min": 4, "max": 10, "step": 1, "tooltip": "Context overlap as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
+            "context_stride": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context stride as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
+            "context_overlap": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context overlap as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
             }
         }
 
