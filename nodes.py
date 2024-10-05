@@ -27,6 +27,7 @@ from diffusers.schedulers import (
     HeunDiscreteScheduler,
     SASolverScheduler,
     DEISMultistepScheduler,
+    LCMScheduler
     )
 
 scheduler_mapping = {
@@ -41,8 +42,11 @@ scheduler_mapping = {
     "SASolverScheduler": SASolverScheduler,
     "UniPCMultistepScheduler": UniPCMultistepScheduler,
     "HeunDiscreteScheduler": HeunDiscreteScheduler,
-    "DEISMultistepScheduler": DEISMultistepScheduler
+    "DEISMultistepScheduler": DEISMultistepScheduler,
+    "LCMScheduler": LCMScheduler
 }
+available_schedulers = list(scheduler_mapping.keys())
+
 
 from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
 from .pipeline_cogvideox import CogVideoXPipeline
@@ -833,14 +837,16 @@ class CogVideoSampler:
                 "steps": ("INT", {"default": 50, "min": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
-                "scheduler": (["DDIM", "DPM", "DDIM_tiled"], {"tooltip": "5B likes DPM, but it doesn't support temporal tiling"}),
-                "t_tile_length": ("INT", {"default": 16, "min": 2, "max": 128, "step": 1, "tooltip": "Length of temporal tiling, use same alue as num_frames to disable, disabled automatically for DPM"}),
-                "t_tile_overlap": ("INT", {"default": 8, "min": 2, "max": 128, "step": 1, "tooltip": "Overlap of temporal tiling"}),
+                "scheduler": (available_schedulers,
+                    {
+                        "default": 'CogVideoXDDIM'
+                    }),
             },
             "optional": {
                 "samples": ("LATENT", ),
                 "denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "image_cond_latents": ("LATENT", ),
+                "context_options": ("COGCONTEXT", ),
             }
         }
 
@@ -849,17 +855,13 @@ class CogVideoSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, steps, cfg, seed, height, width, num_frames, scheduler, t_tile_length, t_tile_overlap, samples=None, 
-                denoise_strength=1.0, image_cond_latents=None):
+    def process(self, pipeline, positive, negative, steps, cfg, seed, height, width, num_frames, scheduler, samples=None, 
+                denoise_strength=1.0, image_cond_latents=None, context_options=None):
         mm.soft_empty_cache()
 
         base_path = pipeline["base_path"]
 
         assert "fun" not in base_path.lower(), "'Fun' models not supported in 'CogVideoSampler', use the 'CogVideoXFunSampler'"
-        assert t_tile_length > t_tile_overlap, "t_tile_length must be greater than t_tile_overlap"
-        assert t_tile_length <= num_frames, "t_tile_length must be equal or less than num_frames"
-        t_tile_length = t_tile_length // 4
-        t_tile_overlap = t_tile_overlap // 4
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
@@ -869,12 +871,20 @@ class CogVideoSampler:
         
         if not pipeline["cpu_offloading"]:
             pipe.transformer.to(device)
-        generator = torch.Generator(device=device).manual_seed(seed)
+        generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
-        if scheduler == "DDIM" or scheduler == "DDIM_tiled":
-            pipe.scheduler = CogVideoXDDIMScheduler.from_config(scheduler_config)
-        elif scheduler == "DPM":
-            pipe.scheduler = CogVideoXDPMScheduler.from_config(scheduler_config)
+        if scheduler in scheduler_mapping:
+            noise_scheduler = scheduler_mapping[scheduler].from_config(scheduler_config)
+            pipe.scheduler = noise_scheduler
+        else:
+            raise ValueError(f"Unknown scheduler: {scheduler}")
+        
+        if context_options is not None:
+            context_frames = context_options["context_frames"] // 4
+            context_stride = context_options["context_stride"] // 4
+            context_overlap = context_options["context_overlap"] // 4
+        else:
+            context_frames, context_stride, context_overlap = None, None, None
 
         if negative.shape[1] < positive.shape[1]:
             target_length = positive.shape[1]
@@ -889,8 +899,6 @@ class CogVideoSampler:
                 height = height,
                 width = width,
                 num_frames = num_frames,
-                t_tile_length = t_tile_length,
-                t_tile_overlap = t_tile_overlap,
                 guidance_scale=cfg,
                 latents=samples["samples"] if samples is not None else None,
                 image_cond_latents=image_cond_latents["samples"] if image_cond_latents is not None else None,
@@ -899,7 +907,12 @@ class CogVideoSampler:
                 negative_prompt_embeds=negative.to(dtype).to(device),
                 generator=generator,
                 device=device,
-                scheduler_name=scheduler
+                scheduler_name=scheduler,
+                context_schedule=context_options["context_schedule"] if context_options is not None else None,
+                context_frames=context_frames,
+                context_stride= context_stride,
+                context_overlap= context_overlap,
+                freenoise=context_options["freenoise"] if context_options is not None else None
             )
         if not pipeline["cpu_offloading"]:
             pipe.transformer.to(offload_device)
@@ -979,24 +992,7 @@ class CogVideoXFunSampler:
                 "seed": ("INT", {"default": 43, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 50, "min": 1, "max": 200, "step": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
-                "scheduler": (
-                    [ 
-                        "Euler",
-                        "Euler A",
-                        "DPM++",
-                        "PNDM",
-                        "DDIM",
-                        "SASolverScheduler",
-                        "UniPCMultistepScheduler",
-                        "HeunDiscreteScheduler",
-                        "DEISMultistepScheduler",
-                        "CogVideoXDDIM",
-                        "CogVideoXDPMScheduler",
-                    ],
-                    {
-                        "default": 'DDIM'
-                    }
-                )
+                "scheduler": (available_schedulers, {"default": 'DDIM'})
             },
             "optional":{
                 "start_img": ("IMAGE",),
@@ -1331,24 +1327,7 @@ class CogVideoXFunControlSampler:
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 25, "min": 1, "max": 200, "step": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
-                "scheduler": (
-                    [ 
-                        "Euler",
-                        "Euler A",
-                        "DPM++",
-                        "PNDM",
-                        "DDIM",
-                        "SASolverScheduler",
-                        "UniPCMultistepScheduler",
-                        "HeunDiscreteScheduler",
-                        "DEISMultistepScheduler",
-                        "CogVideoXDDIM",
-                        "CogVideoXDPMScheduler",
-                    ],
-                    {
-                        "default": 'DDIM'
-                    }
-                ),
+                "scheduler": (available_schedulers, {"default": 'DDIM'}),
                 "control_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "control_start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "control_end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),

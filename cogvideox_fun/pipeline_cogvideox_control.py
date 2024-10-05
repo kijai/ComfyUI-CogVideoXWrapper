@@ -841,11 +841,6 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                     for c in context_queue:
                         partial_latent_model_input = latent_model_input[:, c, :, :, :]
                         partial_control_latents = current_control_latents[:, c, :, :, :]
-                        # image_rotary_emb = (
-                        #     self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device, context_frames=c)
-                        #     if self.transformer.config.use_rotary_positional_embeddings
-                        #     else None
-                        # )
 
                         # predict noise model_output
                         noise_pred[:, c, :, :, :] += self.transformer(
@@ -857,7 +852,7 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                             control_latents=partial_control_latents,
                         )[0]
                         
-                        counter[:, c, :, :, :] += 1
+                        # uncond
                         if do_classifier_free_guidance:
                             noise_uncond[:, c, :, :, :] += self.transformer(
                                 hidden_states=partial_latent_model_input,
@@ -867,7 +862,8 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                                 return_dict=False,
                                 control_latents=partial_control_latents,
                             )[0]
-                        
+
+                        counter[:, c, :, :, :] += 1
                         noise_pred = noise_pred.float()
                         
                     noise_pred /= counter
