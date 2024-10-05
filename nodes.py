@@ -36,7 +36,6 @@ scheduler_mapping = {
     "Euler A": EulerAncestralDiscreteScheduler,
     "PNDM": PNDMScheduler,
     "DDIM": DDIMScheduler,
-    "DDIM_tiled": CogVideoXDDIMScheduler,
     "CogVideoXDDIM": CogVideoXDDIMScheduler,
     "CogVideoXDPMScheduler": CogVideoXDPMScheduler,
     "SASolverScheduler": SASolverScheduler,
@@ -1292,7 +1291,7 @@ class CogVideoContextOptions:
     def INPUT_TYPES(s):
         return {"required": {
             "context_schedule": (["uniform_standard", "uniform_looped", "static_standard", "temporal_tiling"],),
-            "context_frames": ("INT", {"default": 12, "min": 2, "max": 100, "step": 1, "tooltip": "Number of pixel frames in the context, NOTE: the latent space has 4 frames in 1"} ),
+            "context_frames": ("INT", {"default": 48, "min": 2, "max": 100, "step": 1, "tooltip": "Number of pixel frames in the context, NOTE: the latent space has 4 frames in 1"} ),
             "context_stride": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context stride as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
             "context_overlap": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context overlap as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
             "freenoise": ("BOOLEAN", {"default": True, "tooltip": "Shuffle the noise"}),

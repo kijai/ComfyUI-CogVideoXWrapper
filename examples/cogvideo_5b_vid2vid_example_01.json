@@ -7,15 +7,7 @@
       "type": "CLIPLoader",
       "pos": {
         "0": -29,
-        "1": 407,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": 407
       },
       "size": {
         "0": 451.30548095703125,
@@ -50,19 +42,11 @@
       "type": "CogVideoTextEncode",
       "pos": {
         "0": 503,
-        "1": 521,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": 521
       },
       "size": {
         "0": 463.01251220703125,
-        "1": 98.10446166992188
+        "1": 124
       },
       "flags": {},
       "order": 4,
@@ -89,7 +73,9 @@
         "Node name for S&R": "CogVideoTextEncode"
       },
       "widgets_values": [
-        ""
+        "",
+        1,
+        true
       ]
     },
     {
@@ -97,15 +83,7 @@
       "type": "ImageResizeKJ",
       "pos": {
         "0": 206,
-        "1": -69,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": -69
       },
       "size": {
         "0": 315,
@@ -184,15 +162,7 @@
       "type": "CogVideoTextEncode",
       "pos": {
         "0": 500,
-        "1": 308,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": 308
       },
       "size": {
         "0": 474.8450012207031,
@@ -223,7 +193,9 @@
         "Node name for S&R": "CogVideoTextEncode"
       },
       "widgets_values": [
-        "A high-definition nature video showcasing a brown bear as it gracefully runs down a crystal-clear stream, surrounded by the serene ambiance of a dense, verdant forest. The sunlight filters through the canopy of tall trees, casting dappled light on the forest floor, while the gentle sound of flowing water and rustling leaves creates a peaceful atmosphere. The brown bear's fur glistens in the sunlight, highlighting its striking red and white markings as it navigates the stream with agility and playfulness."
+        "A high-definition nature video showcasing a brown bear as it gracefully runs down a crystal-clear stream, surrounded by the serene ambiance of a dense, verdant forest. The sunlight filters through the canopy of tall trees, casting dappled light on the forest floor, while the gentle sound of flowing water and rustling leaves creates a peaceful atmosphere. The brown bear's fur glistens in the sunlight, highlighting its striking red and white markings as it navigates the stream with agility and playfulness.",
+        1,
+        true
       ]
     },
     {
@@ -231,15 +203,7 @@
       "type": "GetImageSizeAndCount",
       "pos": {
         "0": 603,
-        "1": -65,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": -65
       },
       "size": {
         "0": 202.2143096923828,
@@ -289,8 +253,7 @@
           "name": "33 count",
           "type": "INT",
           "links": [
-            178,
-            181
+            178
           ],
           "slot_index": 3,
           "shape": 3
@@ -298,26 +261,19 @@
       ],
       "properties": {
         "Node name for S&R": "GetImageSizeAndCount"
-      }
+      },
+      "widgets_values": []
     },
     {
       "id": 45,
       "type": "VHS_LoadVideo",
       "pos": {
         "0": -93,
-        "1": -153,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": -153
       },
       "size": [
-        235.1999969482422,
-        359.5999984741211
+        247.455078125,
+        365.7275390625
       ],
       "flags": {},
       "order": 5,
@@ -404,15 +360,7 @@
       "type": "GetImageSizeAndCount",
       "pos": {
         "0": 214,
-        "1": -234,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": -234
       },
       "size": {
         "0": 202.2143096923828,
@@ -463,22 +411,15 @@
       ],
       "properties": {
         "Node name for S&R": "GetImageSizeAndCount"
-      }
+      },
+      "widgets_values": []
     },
     {
       "id": 69,
       "type": "INTConstant",
       "pos": {
         "0": -90,
-        "1": -305,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": -305
       },
       "size": {
         "0": 210,
@@ -509,106 +450,36 @@
       "bgcolor": "#29699c"
     },
     {
-      "id": 47,
-      "type": "VHS_VideoCombine",
-      "pos": {
-        "0": 1560,
-        "1": -379,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
-      },
-      "size": [
-        1110,
-        310
-      ],
-      "flags": {},
-      "order": 14,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 132
-        },
-        {
-          "name": "audio",
-          "type": "VHS_AUDIO",
-          "link": null
-        },
-        {
-          "name": "meta_batch",
-          "type": "VHS_BatchManager",
-          "link": null
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": null
-        }
-      ],
-      "outputs": [
-        {
-          "name": "Filenames",
-          "type": "VHS_FILENAMES",
-          "links": null,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VHS_VideoCombine"
-      },
-      "widgets_values": {
-        "frame_rate": 8,
-        "loop_count": 0,
-        "filename_prefix": "CogVideoX_vid2vid",
-        "format": "video/h264-mp4",
-        "pix_fmt": "yuv420p",
-        "crf": 19,
-        "save_metadata": true,
-        "pingpong": false,
-        "save_output": false,
-        "videopreview": {
-          "hidden": false,
-          "paused": false,
-          "params": {
-            "filename": "AnimateDiff_00001.mp4",
-            "subfolder": "",
-            "type": "temp",
-            "format": "video/h264-mp4",
-            "frame_rate": 8
-          }
-        }
-      }
-    },
-    {
       "id": 1,
       "type": "DownloadAndLoadCogVideoModel",
       "pos": {
         "0": 606,
-        "1": 85,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": 85
       },
       "size": {
         "0": 315,
-        "1": 154
+        "1": 194
       },
       "flags": {},
       "order": 2,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "name": "pab_config",
+          "type": "PAB_CONFIG",
+          "link": null
+        },
+        {
+          "name": "block_edit",
+          "type": "TRANSFORMERBLOCKS",
+          "link": null
+        },
+        {
+          "name": "lora",
+          "type": "COGLORA",
+          "link": null
+        }
+      ],
       "outputs": [
         {
           "name": "cogvideo_pipe",
@@ -633,19 +504,214 @@
       ]
     },
     {
+      "id": 11,
+      "type": "CogVideoDecode",
+      "pos": {
+        "0": 1097,
+        "1": 681
+      },
+      "size": {
+        "0": 301.1664123535156,
+        "1": 198
+      },
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 166
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 167
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            118
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoDecode"
+      },
+      "widgets_values": [
+        false,
+        96,
+        96,
+        0.083,
+        0.083,
+        true
+      ]
+    },
+    {
+      "id": 37,
+      "type": "CogVideoImageEncode",
+      "pos": {
+        "0": 975,
+        "1": -73
+      },
+      "size": {
+        "0": 210,
+        "1": 122
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 83,
+          "slot_index": 0
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 129,
+          "slot_index": 1
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            172
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoImageEncode"
+      },
+      "widgets_values": [
+        8,
+        true
+      ]
+    },
+    {
+      "id": 55,
+      "type": "GetImageSizeAndCount",
+      "pos": {
+        "0": 1195,
+        "1": 154
+      },
+      "size": {
+        "0": 210,
+        "1": 86
+      },
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 118,
+          "slot_index": 0
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            170
+          ],
+          "slot_index": 0,
+          "shape": 3
+        },
+        {
+          "name": "720 width",
+          "type": "INT",
+          "links": null,
+          "shape": 3
+        },
+        {
+          "name": "480 height",
+          "type": "INT",
+          "links": null,
+          "shape": 3
+        },
+        {
+          "name": "33 count",
+          "type": "INT",
+          "links": [],
+          "slot_index": 3,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetImageSizeAndCount"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 58,
+      "type": "ImageConcanate",
+      "pos": {
+        "0": 1434,
+        "1": 289
+      },
+      "size": {
+        "0": 315,
+        "1": 102
+      },
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image1",
+          "type": "IMAGE",
+          "link": 191
+        },
+        {
+          "name": "image2",
+          "type": "IMAGE",
+          "link": 170
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            132
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageConcanate"
+      },
+      "widgets_values": [
+        "right",
+        false
+      ]
+    },
+    {
       "id": 64,
       "type": "CogVideoSampler",
       "pos": {
         "0": 1090,
-        "1": 290,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "1": 290
       },
       "size": {
         "0": 312.9841613769531,
@@ -698,15 +764,6 @@
           "widget": {
             "name": "num_frames"
           }
-        },
-        {
-          "name": "t_tile_length",
-          "type": "INT",
-          "link": 181,
-          "slot_index": 7,
-          "widget": {
-            "name": "t_tile_length"
-          }
         }
       ],
       "outputs": [
@@ -738,245 +795,79 @@
         6,
         9,
         "fixed",
-        "DPM",
-        "DDIM",
-        8,
-        0.85
+        "CogVideoXDDIM",
+        0.8
       ]
     },
     {
-      "id": 11,
-      "type": "CogVideoDecode",
+      "id": 47,
+      "type": "VHS_VideoCombine",
       "pos": {
-        "0": 1097,
-        "1": 681,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
+        "0": 1788,
+        "1": -364
       },
       "size": [
-        301.1664045038119,
-        198
+        1110,
+        687.3333333333333
       ],
       "flags": {},
-      "order": 11,
+      "order": 14,
       "mode": 0,
       "inputs": [
-        {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 166
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": 167
-        }
-      ],
-      "outputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "links": [
-            118
-          ],
-          "slot_index": 0,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CogVideoDecode"
-      },
-      "widgets_values": [
-        false,
-        96,
-        96,
-        0.083,
-        0.083,
-        true
-      ]
-    },
-    {
-      "id": 37,
-      "type": "CogVideoImageEncode",
-      "pos": {
-        "0": 975,
-        "1": -73,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
-      },
-      "size": {
-        "0": 210,
-        "1": 122
-      },
-      "flags": {},
-      "order": 9,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 83,
-          "slot_index": 0
+          "link": 132
         },
         {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 129,
-          "slot_index": 1
+          "name": "audio",
+          "type": "VHS_AUDIO",
+          "link": null
         },
         {
-          "name": "mask",
-          "type": "MASK",
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
           "link": null
         }
       ],
       "outputs": [
         {
-          "name": "samples",
-          "type": "LATENT",
-          "links": [
-            172
-          ],
-          "slot_index": 0,
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null,
           "shape": 3
         }
       ],
       "properties": {
-        "Node name for S&R": "CogVideoImageEncode"
+        "Node name for S&R": "VHS_VideoCombine"
       },
-      "widgets_values": [
-        8,
-        true
-      ]
-    },
-    {
-      "id": 55,
-      "type": "GetImageSizeAndCount",
-      "pos": {
-        "0": 1195,
-        "1": 154,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
-      },
-      "size": {
-        "0": 210,
-        "1": 86
-      },
-      "flags": {},
-      "order": 12,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "link": 118,
-          "slot_index": 0
+      "widgets_values": {
+        "frame_rate": 8,
+        "loop_count": 0,
+        "filename_prefix": "CogVideoX_vid2vid",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "CogVideoX_vid2vid_00001.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 8
+          }
         }
-      ],
-      "outputs": [
-        {
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            170
-          ],
-          "slot_index": 0,
-          "shape": 3
-        },
-        {
-          "name": "720 width",
-          "type": "INT",
-          "links": null,
-          "shape": 3
-        },
-        {
-          "name": "480 height",
-          "type": "INT",
-          "links": null,
-          "shape": 3
-        },
-        {
-          "name": "32 count",
-          "type": "INT",
-          "links": [],
-          "slot_index": 3,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetImageSizeAndCount"
       }
-    },
-    {
-      "id": 58,
-      "type": "ImageConcanate",
-      "pos": {
-        "0": 1434,
-        "1": 289,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 0,
-        "7": 0,
-        "8": 0,
-        "9": 0
-      },
-      "size": {
-        "0": 315,
-        "1": 102
-      },
-      "flags": {},
-      "order": 13,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "image1",
-          "type": "IMAGE",
-          "link": 191
-        },
-        {
-          "name": "image2",
-          "type": "IMAGE",
-          "link": 170
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            132
-          ],
-          "slot_index": 0,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ImageConcanate"
-      },
-      "widgets_values": [
-        "right",
-        false
-      ]
     }
   ],
   "links": [
@@ -1141,14 +1032,6 @@
       "IMAGE"
     ],
     [
-      181,
-      57,
-      3,
-      64,
-      7,
-      "INT"
-    ],
-    [
       191,
       57,
       0,
@@ -1161,10 +1044,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.7513148009015777,
+      "scale": 0.6934334949442514,
       "offset": [
-        280.8935954961883,
-        403.945992992638
+        216.19566166079386,
+        455.16205928476876
       ]
     }
   },

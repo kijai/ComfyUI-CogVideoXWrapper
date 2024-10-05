@@ -46,7 +46,7 @@
       },
       "size": {
         "0": 463.01251220703125,
-        "1": 98.10446166992188
+        "1": 124
       },
       "flags": {},
       "order": 4,
@@ -73,7 +73,9 @@
         "Node name for S&R": "CogVideoTextEncode"
       },
       "widgets_values": [
-        "The video is not of a high quality, it has a low resolution. Watermark present in each frame. Strange motion trajectory. "
+        "The video is not of a high quality, it has a low resolution. Watermark present in each frame. Strange motion trajectory. ",
+        1,
+        true
       ]
     },
     {
@@ -112,122 +114,9 @@
         "Node name for S&R": "CogVideoTextEncode"
       },
       "widgets_values": [
-        "a majestic stag is grazing in an enhanced forest, basking in the setting sun filtered by the trees"
-      ]
-    },
-    {
-      "id": 1,
-      "type": "DownloadAndLoadCogVideoModel",
-      "pos": {
-        "0": 642,
-        "1": 90
-      },
-      "size": {
-        "0": 337.8885192871094,
-        "1": 154
-      },
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "cogvideo_pipe",
-          "type": "COGVIDEOPIPE",
-          "links": [
-            121,
-            124
-          ],
-          "slot_index": 0,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "DownloadAndLoadCogVideoModel"
-      },
-      "widgets_values": [
-        "THUDM/CogVideoX-5b-I2V",
-        "bf16",
-        "disabled",
-        "disabled",
-        false
-      ]
-    },
-    {
-      "id": 57,
-      "type": "CogVideoSampler",
-      "pos": {
-        "0": 1138,
-        "1": 150
-      },
-      "size": {
-        "0": 405.5999755859375,
-        "1": 378
-      },
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 121
-        },
-        {
-          "name": "positive",
-          "type": "CONDITIONING",
-          "link": 122
-        },
-        {
-          "name": "negative",
-          "type": "CONDITIONING",
-          "link": 123
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": null
-        },
-        {
-          "name": "image_cond_latents",
-          "type": "LATENT",
-          "link": 129
-        }
-      ],
-      "outputs": [
-        {
-          "name": "cogvideo_pipe",
-          "type": "COGVIDEOPIPE",
-          "links": [
-            128
-          ],
-          "slot_index": 0,
-          "shape": 3
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "links": [
-            127
-          ],
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CogVideoSampler"
-      },
-      "widgets_values": [
-        480,
-        720,
-        49,
-        50,
-        6,
-        65334758276105,
-        "fixed",
-        "DPM",
-        16,
-        8,
-        1
+        "a majestic stag is grazing in an enhanced forest, basking in the setting sun filtered by the trees",
+        1,
+        true
       ]
     },
     {
@@ -486,12 +375,12 @@
         "0": 365,
         "1": 685
       },
-      "size": [
-        402.0635467506413,
-        396.62260382077534
-      ],
+      "size": {
+        "0": 402.06353759765625,
+        "1": 396.6225891113281
+      },
       "flags": {},
-      "order": 2,
+      "order": 1,
       "mode": 0,
       "inputs": [],
       "outputs": [
@@ -517,6 +406,140 @@
       "widgets_values": [
         "sd3stag.png",
         "image"
+      ]
+    },
+    {
+      "id": 57,
+      "type": "CogVideoSampler",
+      "pos": {
+        "0": 1138,
+        "1": 150
+      },
+      "size": [
+        399.878095897654,
+        350
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 121
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 122
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 123
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": null
+        },
+        {
+          "name": "image_cond_latents",
+          "type": "LATENT",
+          "link": 129
+        },
+        {
+          "name": "context_options",
+          "type": "COGCONTEXT",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            128
+          ],
+          "slot_index": 0,
+          "shape": 3
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            127
+          ],
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoSampler"
+      },
+      "widgets_values": [
+        480,
+        720,
+        49,
+        20,
+        6,
+        65334758276105,
+        "fixed",
+        "CogVideoXDPMScheduler",
+        1
+      ]
+    },
+    {
+      "id": 1,
+      "type": "DownloadAndLoadCogVideoModel",
+      "pos": {
+        "0": 633,
+        "1": 44
+      },
+      "size": {
+        "0": 337.8885192871094,
+        "1": 194
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pab_config",
+          "type": "PAB_CONFIG",
+          "link": null
+        },
+        {
+          "name": "block_edit",
+          "type": "TRANSFORMERBLOCKS",
+          "link": null
+        },
+        {
+          "name": "lora",
+          "type": "COGLORA",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            121,
+            124
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadCogVideoModel"
+      },
+      "widgets_values": [
+        "THUDM/CogVideoX-5b-I2V",
+        "bf16",
+        "disabled",
+        "disabled",
+        false
       ]
     }
   ],
@@ -622,10 +645,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.7513148009015778,
+      "scale": 0.6934334949442514,
       "offset": [
-        153.9884532493587,
-        111.86149660036742
+        -24.154349208343916,
+        155.20539218330134
       ]
     }
   },

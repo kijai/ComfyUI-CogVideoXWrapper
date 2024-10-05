@@ -475,3 +475,50 @@ def unmerge_lora(pipeline, lora_path, multiplier=1, device="cpu", dtype=torch.fl
             curr_layer.weight.data -= multiplier * alpha * torch.mm(weight_up, weight_down)
 
     return pipeline
+
+def load_lora_into_transformer(state_dict, transformer, adapter_name=None):
+        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+        from diffusers.utils.peft_utils import get_peft_kwargs, get_adapter_name
+        from diffusers.utils.import_utils import is_peft_version
+        from diffusers.utils.state_dict_utils import convert_unet_state_dict_to_peft
+        keys = list(state_dict.keys())
+        transformer_keys = [k for k in keys if k.startswith("transformer")]
+        state_dict = {
+            k.replace(f"transformer.", ""): v for k, v in state_dict.items() if k in transformer_keys
+        }
+        if len(state_dict.keys()) > 0:
+            # check with first key if is not in peft format
+            first_key = next(iter(state_dict.keys()))
+            if "lora_A" not in first_key:
+                state_dict = convert_unet_state_dict_to_peft(state_dict)
+            if adapter_name in getattr(transformer, "peft_config", {}):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
+                )
+            rank = {}
+            for key, val in state_dict.items():
+                if "lora_B" in key:
+                    rank[key] = val.shape[1]
+            lora_config_kwargs = get_peft_kwargs(rank, network_alpha_dict=None, peft_state_dict=state_dict)
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
+                    raise ValueError(
+                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                    )
+                else:
+                    lora_config_kwargs.pop("use_dora")
+            lora_config = LoraConfig(**lora_config_kwargs)
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = get_adapter_name(transformer)
+           
+            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
+            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name)
+            if incompatible_keys is not None:
+                # check only for unexpected keys
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    print(
+                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                        f" {unexpected_keys}. "
+                    )
