@@ -974,7 +974,7 @@ class CogVideoXFunSampler:
                 "pipeline": ("COGVIDEOPIPE",),
                 "positive": ("CONDITIONING", ),
                 "negative": ("CONDITIONING", ),
-                "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
+                "video_length": ("INT", {"default": 49, "min": 5, "max": 2048, "step": 4}),
                 "base_resolution": ("INT", {"min": 256, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
                 "seed": ("INT", {"default": 43, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 50, "min": 1, "max": 200, "step": 1}),
@@ -1003,6 +1003,7 @@ class CogVideoXFunSampler:
                 "end_img": ("IMAGE",),
                 "opt_empty_latent": ("LATENT",),
                 "noise_aug_strength": ("FLOAT", {"default": 0.0563, "min": 0.0, "max": 1.0, "step": 0.001}),
+                "context_options": ("COGCONTEXT", ),
             },
         }
     
@@ -1012,7 +1013,7 @@ class CogVideoXFunSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, pipeline,  positive, negative, video_length, base_resolution, seed, steps, cfg, scheduler, 
-                start_img=None, end_img=None, opt_empty_latent=None, noise_aug_strength=0.0563):
+                start_img=None, end_img=None, opt_empty_latent=None, noise_aug_strength=0.0563, context_options=None):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -1041,6 +1042,9 @@ class CogVideoXFunSampler:
         log.info(f"Closest bucket size: {width}x{height}")
         
         # Load Sampler
+        if context_options is not None and context_options["context_schedule"] == "temporal_tiling":
+            logging.info("Temporal tiling enabled, changing scheduler to DDIM_tiled")
+            scheduler="DDIM_tiled"
         scheduler_config = pipeline["scheduler_config"]
         if scheduler in scheduler_mapping:
             noise_scheduler = scheduler_mapping[scheduler].from_config(scheduler_config)
@@ -1050,7 +1054,15 @@ class CogVideoXFunSampler:
 
         #if not pipeline["cpu_offloading"]:
         #    pipe.transformer.to(device)
-        generator= torch.Generator(device=device).manual_seed(seed)
+
+        if context_options is not None:
+            context_frames = context_options["context_frames"] // 4
+            context_stride = context_options["context_stride"] // 4
+            context_overlap = context_options["context_overlap"] // 4
+        else:
+            context_frames, context_stride, context_overlap = None, None, None
+
+        generator= torch.Generator(device="cpu").manual_seed(seed)
 
         autocastcondition = not pipeline["onediff"]
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
@@ -1072,6 +1084,11 @@ class CogVideoXFunSampler:
                 mask_video   = input_video_mask,
                 comfyui_progressbar = True,
                 noise_aug_strength = noise_aug_strength,
+                context_schedule=context_options["context_schedule"] if context_options is not None else None,
+                context_frames=context_frames,
+                context_stride= context_stride,
+                context_overlap= context_overlap,
+                freenoise=context_options["freenoise"] if context_options is not None else None
             )
         #if not pipeline["cpu_offloading"]:
         #     pipe.transformer.to(offload_device)
@@ -1282,6 +1299,7 @@ class CogVideoContextOptions:
             "context_frames": ("INT", {"default": 12, "min": 2, "max": 100, "step": 1, "tooltip": "Number of pixel frames in the context, NOTE: the latent space has 4 frames in 1"} ),
             "context_stride": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context stride as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
             "context_overlap": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context overlap as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
+            "freenoise": ("BOOLEAN", {"default": True, "tooltip": "Shuffle the noise"}),
             }
         }
 
@@ -1290,12 +1308,13 @@ class CogVideoContextOptions:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, context_schedule, context_frames, context_stride, context_overlap):
+    def process(self, context_schedule, context_frames, context_stride, context_overlap, freenoise):
         context_options = {
             "context_schedule":context_schedule,
             "context_frames":context_frames,
             "context_stride":context_stride,
-            "context_overlap":context_overlap
+            "context_overlap":context_overlap,
+            "freenoise":freenoise
         }
 
         return (context_options,)
@@ -1362,6 +1381,13 @@ class CogVideoXFunControlSampler:
 
         mm.soft_empty_cache()
 
+        if context_options is not None:
+            context_frames = context_options["context_frames"] // 4
+            context_stride = context_options["context_stride"] // 4
+            context_overlap = context_options["context_overlap"] // 4
+        else:
+            context_frames, context_stride, context_overlap = None, None, None
+
         # Load Sampler
         scheduler_config = pipeline["scheduler_config"]
         if context_options is not None and context_options["context_schedule"] == "temporal_tiling":
@@ -1373,7 +1399,7 @@ class CogVideoXFunControlSampler:
         else:
             raise ValueError(f"Unknown scheduler: {scheduler}")
 
-        generator= torch.Generator(device).manual_seed(seed)
+        generator=torch.Generator(torch.device("cpu")).manual_seed(seed)
 
         autocastcondition = not pipeline["onediff"]
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
@@ -1401,9 +1427,10 @@ class CogVideoXFunControlSampler:
                 latents=samples["samples"] if samples is not None else None,
                 denoise_strength=denoise_strength,
                 context_schedule=context_options["context_schedule"] if context_options is not None else None,
-                context_frames=context_options["context_frames"] if context_options is not None else None,
-                context_stride=context_options["context_stride"] if context_options is not None else None,
-                context_overlap=context_options["context_overlap"] if context_options is not None else None
+                context_frames=context_frames,
+                context_stride= context_stride,
+                context_overlap= context_overlap,
+                freenoise=context_options["freenoise"] if context_options is not None else None
                 
             )
 

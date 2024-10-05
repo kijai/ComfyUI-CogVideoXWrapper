@@ -214,7 +214,8 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
             set_pab_manager(pab_config)
 
     def prepare_latents(
-        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, timesteps, denoise_strength, num_inference_steps, latents=None, 
+        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, timesteps, denoise_strength, num_inference_steps,
+         latents=None, freenoise=True, context_size=None, context_overlap=None
     ):
         shape = (
             batch_size,
@@ -228,9 +229,43 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=self.vae.dtype)
+        noise = randn_tensor(shape, generator=generator, device=torch.device("cpu"), dtype=self.vae.dtype)
+        if freenoise:
+            print("Applying FreeNoise")
+            # code and comments from AnimateDiff-Evolved by Kosinkadink (https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved)
+            video_length = num_frames // 4
+            delta = context_size - context_overlap
+            for start_idx in range(0, video_length-context_size, delta):
+                # start_idx corresponds to the beginning of a context window
+                # goal: place shuffled in the delta region right after the end of the context window
+                #       if space after context window is not enough to place the noise, adjust and finish
+                place_idx = start_idx + context_size
+                # if place_idx is outside the valid indexes, we are already finished
+                if place_idx >= video_length:
+                    break
+                end_idx = place_idx - 1
+                #print("video_length:", video_length, "start_idx:", start_idx, "end_idx:", end_idx, "place_idx:", place_idx, "delta:", delta)
+
+                # if there is not enough room to copy delta amount of indexes, copy limited amount and finish
+                if end_idx + delta >= video_length:
+                    final_delta = video_length - place_idx
+                    # generate list of indexes in final delta region
+                    list_idx = torch.tensor(list(range(start_idx,start_idx+final_delta)), device=torch.device("cpu"), dtype=torch.long)
+                    # shuffle list
+                    list_idx = list_idx[torch.randperm(final_delta, generator=generator)]
+                    # apply shuffled indexes
+                    noise[:, place_idx:place_idx + final_delta, :, :, :] = noise[:, list_idx, :, :, :]
+                    break
+                # otherwise, do normal behavior
+                # generate list of indexes in delta region
+                list_idx = torch.tensor(list(range(start_idx,start_idx+delta)), device=torch.device("cpu"), dtype=torch.long)
+                # shuffle list
+                list_idx = list_idx[torch.randperm(delta, generator=generator)]
+                # apply shuffled indexes
+                #print("place_idx:", place_idx, "delta:", delta, "list_idx:", list_idx)
+                noise[:, place_idx:place_idx + delta, :, :, :] = noise[:, list_idx, :, :, :]
         if latents is None:
-            latents = noise
+            latents = noise.to(device)
         else:
             latents = latents.to(device)
             timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, denoise_strength, device)
@@ -492,6 +527,7 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
         context_frames: Optional[int] = None,
         context_stride: Optional[int] = None,
         context_overlap: Optional[int] = None,
+        freenoise: Optional[bool] = True,
     ) -> Union[CogVideoX_Fun_PipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -634,6 +670,9 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
             denoise_strength,
             num_inference_steps,
             latents,
+            context_size=context_frames,
+            context_overlap=context_overlap,
+            freenoise=freenoise,
         )
         if comfyui_progressbar:
             pbar.update(1)
@@ -659,8 +698,8 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
 
         # 8.5. Temporal tiling prep
         if context_schedule is not None and context_schedule == "temporal_tiling":
-            t_tile_length = context_frames // 4
-            t_tile_overlap = context_overlap // 4
+            t_tile_length = context_frames
+            t_tile_overlap = context_overlap
             t_tile_weights = self._gaussian_weights(t_tile_length=t_tile_length, t_batch_size=1).to(latents.device).to(self.vae.dtype)
             use_temporal_tiling = True
             print("Temporal tiling enabled")
@@ -668,9 +707,6 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
             print(f"Context schedule enabled: {context_frames} frames, {context_stride} stride, {context_overlap} overlap")
             use_temporal_tiling = False
             use_context_schedule = True
-            context_frames = context_frames // 4
-            context_stride = context_stride // 4
-            context_overlap = context_overlap // 4
             from .context import get_context_scheduler
             context = get_context_scheduler(context_schedule)
 
