@@ -512,7 +512,7 @@ def load_lora_into_transformer(state_dict, transformer, adapter_name=None):
             if adapter_name is None:
                 adapter_name = get_adapter_name(transformer)
            
-            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
+            transformer = inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
             incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name)
             if incompatible_keys is not None:
                 # check only for unexpected keys
@@ -522,3 +522,4 @@ def load_lora_into_transformer(state_dict, transformer, adapter_name=None):
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                         f" {unexpected_keys}. "
                     )
+        return transformer
