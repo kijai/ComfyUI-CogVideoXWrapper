@@ -994,7 +994,7 @@ class CogVideoXFunSampler:
                 "positive": ("CONDITIONING", ),
                 "negative": ("CONDITIONING", ),
                 "video_length": ("INT", {"default": 49, "min": 5, "max": 2048, "step": 4}),
-                "base_resolution": ("INT", {"min": 256, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
+                "base_resolution": ("INT", {"min": 64, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
                 "seed": ("INT", {"default": 43, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 50, "min": 1, "max": 200, "step": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
@@ -1107,24 +1107,11 @@ class CogVideoXFunVid2VidSampler:
                 "positive": ("CONDITIONING", ),
                 "negative": ("CONDITIONING", ),
                 "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
-                "base_resolution": ("INT", {"min": 256, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
+                "base_resolution": ("INT", {"min": 64, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 25, "min": 1, "max": 200, "step": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
-                "scheduler": (
-                    [ 
-                        "Euler",
-                        "Euler A",
-                        "DPM++",
-                        "PNDM",
-                        "DDIM",
-                        "SASolverScheduler",
-                        "UniPCMultistepScheduler",
-                        "HeunDiscreteScheduler",
-                        "DEISMultistepScheduler",
-                        "CogVideoXDDIM",
-                        "CogVideoXDPMScheduler",
-                    ],
+                "scheduler": (available_schedulers,
                     {
                         "default": 'DDIM'
                     }
@@ -1224,7 +1211,7 @@ class CogVideoControlImageEncode:
         return {"required": {
             "pipeline": ("COGVIDEOPIPE",),
             "control_video": ("IMAGE", ),
-            "base_resolution": ("INT", {"min": 256, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
+            "base_resolution": ("INT", {"min": 64, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
             "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
             "noise_aug_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001}),
             },
