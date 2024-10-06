@@ -2,3 +2,4 @@ huggingface_hub
 diffusers>=0.30.3
 accelerate>=0.33.0
 einops
+peft

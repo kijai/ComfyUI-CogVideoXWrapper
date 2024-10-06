@@ -58,7 +58,7 @@ from .cogvideox_fun.autoencoder_magvit import AutoencoderKLCogVideoX as Autoenco
 from .cogvideox_fun.utils import get_image_to_video_latent, get_video_to_video_latent, ASPECT_RATIO_512, get_closest_ratio, to_pil
 from .cogvideox_fun.pipeline_cogvideox_inpaint import CogVideoX_Fun_Pipeline_Inpaint
 from .cogvideox_fun.pipeline_cogvideox_control import CogVideoX_Fun_Pipeline_Control
-from .cogvideox_fun.lora_utils import merge_lora, load_lora_into_transformer
+
 from PIL import Image
 import numpy as np
 import json
@@ -346,6 +346,7 @@ class DownloadAndLoadCogVideoModel:
         transformer = transformer.to(dtype).to(offload_device)
 
         if lora is not None:
+            from .cogvideox_fun.lora_utils import merge_lora, load_lora_into_transformer
             logging.info(f"Merging LoRA weights from {lora['path']} with strength {lora['strength']}")
             if "fun" in model.lower():
                 transformer = merge_lora(transformer, lora["path"], lora["strength"])
