@@ -1042,8 +1042,8 @@ class CogVideoXFunSampler:
         
         # Load Sampler
         if context_options is not None and context_options["context_schedule"] == "temporal_tiling":
-            logging.info("Temporal tiling enabled, changing scheduler to DDIM_tiled")
-            scheduler="DDIM_tiled"
+            logging.info("Temporal tiling enabled, changing scheduler to CogVideoXDDIM")
+            scheduler="CogVideoXDDIM"
         scheduler_config = pipeline["scheduler_config"]
         if scheduler in scheduler_mapping:
             noise_scheduler = scheduler_mapping[scheduler].from_config(scheduler_config)
@@ -1373,8 +1373,8 @@ class CogVideoXFunControlSampler:
         # Load Sampler
         scheduler_config = pipeline["scheduler_config"]
         if context_options is not None and context_options["context_schedule"] == "temporal_tiling":
-            logging.info("Temporal tiling enabled, changing scheduler to DDIM_tiled")
-            scheduler="DDIM_tiled"
+            logging.info("Temporal tiling enabled, changing scheduler to CogVideoXDDIM")
+            scheduler="CogVideoXDDIM"
         if scheduler in scheduler_mapping:
             noise_scheduler = scheduler_mapping[scheduler].from_config(scheduler_config)
             pipe.scheduler = noise_scheduler
