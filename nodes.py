@@ -47,10 +47,10 @@ scheduler_mapping = {
 available_schedulers = list(scheduler_mapping.keys())
 
 
-from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
+from diffusers.models import AutoencoderKLCogVideoX
+from .custom_cogvideox_transformer_3d import CogVideoXTransformer3DModel
 from .pipeline_cogvideox import CogVideoXPipeline
 from contextlib import nullcontext
-from pathlib import Path
 
 from .cogvideox_fun.transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFun
 from .cogvideox_fun.fun_pab_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFunPAB

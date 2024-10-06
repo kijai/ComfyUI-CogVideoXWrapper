@@ -27,7 +27,11 @@ from .modules.embeddings import apply_rotary_emb
 #from .modules.embeddings import CogVideoXPatchEmbed
 
 from .modules.normalization import AdaLayerNorm, CogVideoXLayerNormZero
-
+try:
+    from sageattention import sageattn
+    SAGEATTN_IS_AVAVILABLE = True
+except:
+    SAGEATTN_IS_AVAVILABLE = False
 
 class CogVideoXAttnProcessor2_0:
     r"""
@@ -98,9 +102,12 @@ class CogVideoXAttnProcessor2_0:
                     key[:, :, text_seq_length : emb_len + text_seq_length], image_rotary_emb
                 )
 
-        hidden_states = F.scaled_dot_product_attention(
+        if SAGEATTN_IS_AVAVILABLE:
+            hidden_states = sageattn(query, key, value, is_causal=False)
+        else:
+            hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
+            )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn_heads * head_dim)
 
@@ -170,9 +177,12 @@ class FusedCogVideoXAttnProcessor2_0:
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
-        hidden_states = F.scaled_dot_product_attention(
+        if SAGEATTN_IS_AVAVILABLE:
+            hidden_states = sageattn(query, key, value, is_causal=False)
+        else:
+            hidden_states = F.scaled_dot_product_attention(
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
+            )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
 

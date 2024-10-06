@@ -15,26 +15,21 @@
 
 from typing import Any, Dict, Optional, Tuple, Union
 
-import os
-import json
 import torch
-import glob
-import torch.nn.functional as F
 from torch import nn
+import torch.nn.functional as F
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils import is_torch_version, logging
 from diffusers.utils.torch_utils import maybe_allow_in_graph
 from diffusers.models.attention import Attention, FeedForward
-#from diffusers.models.attention_processor import AttentionProcessor
-from diffusers.models.embeddings import TimestepEmbedding, Timesteps, get_3d_sincos_pos_embed
+from diffusers.models.attention_processor import AttentionProcessor
+from diffusers.models.embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.models.modeling_utils import ModelMixin
-#from diffusers.models.normalization import AdaLayerNorm, CogVideoXLayerNormZero
+from diffusers.models.normalization import AdaLayerNorm, CogVideoXLayerNormZero
 
-from ..videosys.modules.normalization import AdaLayerNorm, CogVideoXLayerNormZero
-from ..videosys.modules.embeddings import apply_rotary_emb
-from ..videosys.core.pab_mgr import enable_pab, if_broadcast_spatial
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 try:
@@ -79,24 +74,12 @@ class CogVideoXAttnProcessor2_0:
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
 
-        # if attn.parallel_manager.sp_size > 1:
-        #     assert (
-        #         attn.heads % attn.parallel_manager.sp_size == 0
-        #     ), f"Number of heads {attn.heads} must be divisible by sequence parallel size {attn.parallel_manager.sp_size}"
-        #     attn_heads = attn.heads // attn.parallel_manager.sp_size
-        #     query, key, value = map(
-        #         lambda x: all_to_all_comm(x, attn.parallel_manager.sp_group, scatter_dim=2, gather_dim=1),
-        #         [query, key, value],
-        #     )
-        
-        attn_heads = attn.heads
-
         inner_dim = key.shape[-1]
-        head_dim = inner_dim // attn_heads
+        head_dim = inner_dim // attn.heads
 
-        query = query.view(batch_size, -1, attn_heads, head_dim).transpose(1, 2)
-        key = key.view(batch_size, -1, attn_heads, head_dim).transpose(1, 2)
-        value = value.view(batch_size, -1, attn_heads, head_dim).transpose(1, 2)
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
         if attn.norm_q is not None:
             query = attn.norm_q(query)
@@ -105,14 +88,11 @@ class CogVideoXAttnProcessor2_0:
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
-            emb_len = image_rotary_emb[0].shape[0]
-            query[:, :, text_seq_length : emb_len + text_seq_length] = apply_rotary_emb(
-                query[:, :, text_seq_length : emb_len + text_seq_length], image_rotary_emb
-            )
+            from diffusers.models.embeddings import apply_rotary_emb
+
+            query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
             if not attn.is_cross_attention:
-                key[:, :, text_seq_length : emb_len + text_seq_length] = apply_rotary_emb(
-                    key[:, :, text_seq_length : emb_len + text_seq_length], image_rotary_emb
-                )
+                key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
         if SAGEATTN_IS_AVAVILABLE:
             hidden_states = sageattn(query, key, value, is_causal=False)
@@ -121,10 +101,7 @@ class CogVideoXAttnProcessor2_0:
             query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
             )
 
-        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn_heads * head_dim)
-
-        #if attn.parallel_manager.sp_size > 1:
-        #    hidden_states = all_to_all_comm(hidden_states, attn.parallel_manager.sp_group, scatter_dim=1, gather_dim=2)
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
@@ -185,6 +162,8 @@ class FusedCogVideoXAttnProcessor2_0:
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
+            from diffusers.models.embeddings import apply_rotary_emb
+
             query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
@@ -207,46 +186,7 @@ class FusedCogVideoXAttnProcessor2_0:
             [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
         )
         return hidden_states, encoder_hidden_states
-
-class CogVideoXPatchEmbed(nn.Module):
-    def __init__(
-        self,
-        patch_size: int = 2,
-        in_channels: int = 16,
-        embed_dim: int = 1920,
-        text_embed_dim: int = 4096,
-        bias: bool = True,
-    ) -> None:
-        super().__init__()
-        self.patch_size = patch_size
-
-        self.proj = nn.Conv2d(
-            in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
-        )
-        self.text_proj = nn.Linear(text_embed_dim, embed_dim)
-
-    def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
-        r"""
-        Args:
-            text_embeds (`torch.Tensor`):
-                Input text embeddings. Expected shape: (batch_size, seq_length, embedding_dim).
-            image_embeds (`torch.Tensor`):
-                Input image embeddings. Expected shape: (batch_size, num_frames, channels, height, width).
-        """
-        text_embeds = self.text_proj(text_embeds)
-
-        batch, num_frames, channels, height, width = image_embeds.shape
-        image_embeds = image_embeds.reshape(-1, channels, height, width)
-        image_embeds = self.proj(image_embeds)
-        image_embeds = image_embeds.view(batch, num_frames, *image_embeds.shape[1:])
-        image_embeds = image_embeds.flatten(3).transpose(2, 3)  # [batch, num_frames, height x width, channels]
-        image_embeds = image_embeds.flatten(1, 2)  # [batch, num_frames x height x width, channels]
-
-        embeds = torch.cat(
-            [text_embeds, image_embeds], dim=1
-        ).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
-        return embeds
-
+    
 @maybe_allow_in_graph
 class CogVideoXBlock(nn.Module):
     r"""
@@ -299,7 +239,6 @@ class CogVideoXBlock(nn.Module):
         ff_inner_dim: Optional[int] = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
-        block_idx: int = 0,
     ):
         super().__init__()
 
@@ -317,9 +256,6 @@ class CogVideoXBlock(nn.Module):
             processor=CogVideoXAttnProcessor2_0(),
         )
 
-        # parallel
-        #self.attn1.parallel_manager = None
-
         # 2. Feed Forward
         self.norm2 = CogVideoXLayerNormZero(time_embed_dim, dim, norm_elementwise_affine, norm_eps, bias=True)
 
@@ -332,18 +268,12 @@ class CogVideoXBlock(nn.Module):
             bias=ff_bias,
         )
 
-        # pab
-        self.attn_count = 0
-        self.last_attn = None
-        self.block_idx = block_idx
-
     def forward(
         self,
         hidden_states: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
-        timestep=None,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
 
@@ -353,18 +283,11 @@ class CogVideoXBlock(nn.Module):
         )
 
         # attention
-        if enable_pab():
-            broadcast_attn, self.attn_count = if_broadcast_spatial(int(timestep[0]), self.attn_count, self.block_idx)
-        if enable_pab() and broadcast_attn:
-            attn_hidden_states, attn_encoder_hidden_states = self.last_attn
-        else:
-            attn_hidden_states, attn_encoder_hidden_states = self.attn1(
-                hidden_states=norm_hidden_states,
-                encoder_hidden_states=norm_encoder_hidden_states,
-                image_rotary_emb=image_rotary_emb,
-            )
-            if enable_pab():
-                self.last_attn = (attn_hidden_states, attn_encoder_hidden_states)
+        attn_hidden_states, attn_encoder_hidden_states = self.attn1(
+            hidden_states=norm_hidden_states,
+            encoder_hidden_states=norm_encoder_hidden_states,
+            image_rotary_emb=image_rotary_emb,
+        )
 
         hidden_states = hidden_states + gate_msa * attn_hidden_states
         encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_encoder_hidden_states
@@ -467,42 +390,42 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         spatial_interpolation_scale: float = 1.875,
         temporal_interpolation_scale: float = 1.0,
         use_rotary_positional_embeddings: bool = False,
-        add_noise_in_inpaint_model: bool = False,
+        use_learned_positional_embeddings: bool = False,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
 
-        post_patch_height = sample_height // patch_size
-        post_patch_width = sample_width // patch_size
-        post_time_compression_frames = (sample_frames - 1) // temporal_compression_ratio + 1
-        self.num_patches = post_patch_height * post_patch_width * post_time_compression_frames
-        self.post_patch_height = post_patch_height
-        self.post_patch_width = post_patch_width
-        self.post_time_compression_frames = post_time_compression_frames
-        self.patch_size = patch_size
+        if not use_rotary_positional_embeddings and use_learned_positional_embeddings:
+            raise ValueError(
+                "There are no CogVideoX checkpoints available with disable rotary embeddings and learned positional "
+                "embeddings. If you're using a custom model and/or believe this should be supported, please open an "
+                "issue at https://github.com/huggingface/diffusers/issues."
+            )
 
         # 1. Patch embedding
-        self.patch_embed = CogVideoXPatchEmbed(patch_size, in_channels, inner_dim, text_embed_dim, bias=True)
+        self.patch_embed = CogVideoXPatchEmbed(
+            patch_size=patch_size,
+            in_channels=in_channels,
+            embed_dim=inner_dim,
+            text_embed_dim=text_embed_dim,
+            bias=True,
+            sample_width=sample_width,
+            sample_height=sample_height,
+            sample_frames=sample_frames,
+            temporal_compression_ratio=temporal_compression_ratio,
+            max_text_seq_length=max_text_seq_length,
+            spatial_interpolation_scale=spatial_interpolation_scale,
+            temporal_interpolation_scale=temporal_interpolation_scale,
+            use_positional_embeddings=not use_rotary_positional_embeddings,
+            use_learned_positional_embeddings=use_learned_positional_embeddings,
+        )
         self.embedding_dropout = nn.Dropout(dropout)
 
-        # 2. 3D positional embeddings
-        spatial_pos_embedding = get_3d_sincos_pos_embed(
-            inner_dim,
-            (post_patch_width, post_patch_height),
-            post_time_compression_frames,
-            spatial_interpolation_scale,
-            temporal_interpolation_scale,
-        )
-        spatial_pos_embedding = torch.from_numpy(spatial_pos_embedding).flatten(0, 1)
-        pos_embedding = torch.zeros(1, max_text_seq_length + self.num_patches, inner_dim, requires_grad=False)
-        pos_embedding.data[:, max_text_seq_length:].copy_(spatial_pos_embedding)
-        self.register_buffer("pos_embedding", pos_embedding, persistent=False)
-
-        # 3. Time embeddings
+        # 2. Time embeddings
         self.time_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
         self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
 
-        # 4. Define spatio-temporal transformers blocks
+        # 3. Define spatio-temporal transformers blocks
         self.transformer_blocks = nn.ModuleList(
             [
                 CogVideoXBlock(
@@ -521,7 +444,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         )
         self.norm_final = nn.LayerNorm(inner_dim, norm_eps, norm_elementwise_affine)
 
-        # 5. Output blocks
+        # 4. Output blocks
         self.norm_out = AdaLayerNorm(
             embedding_dim=time_embed_dim,
             output_dim=2 * inner_dim,
@@ -535,6 +458,66 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
+
+    @property
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
+    def attn_processors(self) -> Dict[str, AttentionProcessor]:
+        r"""
+        Returns:
+            `dict` of attention processors: A dictionary containing all attention processors used in the model with
+            indexed by its weight name.
+        """
+        # set recursively
+        processors = {}
+
+        def fn_recursive_add_processors(name: str, module: torch.nn.Module, processors: Dict[str, AttentionProcessor]):
+            if hasattr(module, "get_processor"):
+                processors[f"{name}.processor"] = module.get_processor()
+
+            for sub_name, child in module.named_children():
+                fn_recursive_add_processors(f"{name}.{sub_name}", child, processors)
+
+            return processors
+
+        for name, module in self.named_children():
+            fn_recursive_add_processors(name, module, processors)
+
+        return processors
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
+        r"""
+        Sets the attention processor to use to compute attention.
+
+        Parameters:
+            processor (`dict` of `AttentionProcessor` or only `AttentionProcessor`):
+                The instantiated processor class or a dictionary of processor classes that will be set as the processor
+                for **all** `Attention` layers.
+
+                If `processor` is a dict, the key needs to define the path to the corresponding cross attention
+                processor. This is strongly recommended when setting trainable attention processors.
+
+        """
+        count = len(self.attn_processors.keys())
+
+        if isinstance(processor, dict) and len(processor) != count:
+            raise ValueError(
+                f"A dict of processors was passed, but the number of processors {len(processor)} does not match the"
+                f" number of attention layers: {count}. Please make sure to pass {count} processor classes."
+            )
+
+        def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
+            if hasattr(module, "set_processor"):
+                if not isinstance(processor, dict):
+                    module.set_processor(processor)
+                else:
+                    module.set_processor(processor.pop(f"{name}.processor"))
+
+            for sub_name, child in module.named_children():
+                fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
+
+        for name, module in self.named_children():
+            fn_recursive_attn_processor(name, module, processor)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections with FusedAttnProcessor2_0->FusedCogVideoXAttnProcessor2_0
     def fuse_qkv_projections(self):
@@ -582,8 +565,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
         timestep_cond: Optional[torch.Tensor] = None,
-        inpaint_latents: Optional[torch.Tensor] = None,
-        control_latents: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         return_dict: bool = True,
     ):
@@ -600,33 +581,14 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         emb = self.time_embedding(t_emb, timestep_cond)
 
         # 2. Patch embedding
-        if inpaint_latents is not None:
-            hidden_states = torch.concat([hidden_states, inpaint_latents], 2)
-        if control_latents is not None:
-            hidden_states = torch.concat([hidden_states, control_latents], 2)
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
+        hidden_states = self.embedding_dropout(hidden_states)
 
-        # 3. Position embedding
         text_seq_length = encoder_hidden_states.shape[1]
-        if not self.config.use_rotary_positional_embeddings:
-            seq_length = height * width * num_frames // (self.config.patch_size**2)
-            # pos_embeds = self.pos_embedding[:, : text_seq_length + seq_length]
-            pos_embeds = self.pos_embedding
-            emb_size = hidden_states.size()[-1]
-            pos_embeds_without_text = pos_embeds[:, text_seq_length: ].view(1, self.post_time_compression_frames, self.post_patch_height, self.post_patch_width, emb_size)
-            pos_embeds_without_text = pos_embeds_without_text.permute([0, 4, 1, 2, 3])
-            pos_embeds_without_text = F.interpolate(pos_embeds_without_text,size=[self.post_time_compression_frames, height // self.config.patch_size, width // self.config.patch_size],mode='trilinear',align_corners=False)
-            pos_embeds_without_text = pos_embeds_without_text.permute([0, 2, 3, 4, 1]).view(1, -1, emb_size)
-            pos_embeds = torch.cat([pos_embeds[:, :text_seq_length], pos_embeds_without_text], dim = 1)
-            pos_embeds = pos_embeds[:, : text_seq_length + seq_length]
-            hidden_states = hidden_states + pos_embeds
-            hidden_states = self.embedding_dropout(hidden_states)
-
         encoder_hidden_states = hidden_states[:, :text_seq_length]
         hidden_states = hidden_states[:, text_seq_length:]
 
-        # 4. Transformer blocks
-        
+        # 3. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
             if self.training and self.gradient_checkpointing:
 
@@ -651,7 +613,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     temb=emb,
                     image_rotary_emb=image_rotary_emb,
-                    timestep=timestep,
                 )
 
         if not self.config.use_rotary_positional_embeddings:
@@ -663,79 +624,18 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
             hidden_states = self.norm_final(hidden_states)
             hidden_states = hidden_states[:, text_seq_length:]
 
-        # 5. Final block
+        # 4. Final block
         hidden_states = self.norm_out(hidden_states, temb=emb)
         hidden_states = self.proj_out(hidden_states)
 
-        # 6. Unpatchify
+        # 5. Unpatchify
+        # Note: we use `-1` instead of `channels`:
+        #   - It is okay to `channels` use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
+        #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
         p = self.config.patch_size
-        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, channels, p, p)
+        output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
         output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
 
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
-
-    @classmethod
-    def from_pretrained_2d(cls, pretrained_model_path, subfolder=None, transformer_additional_kwargs={}):
-        if subfolder is not None:
-            pretrained_model_path = os.path.join(pretrained_model_path, subfolder)
-        print(f"loaded 3D transformer's pretrained weights from {pretrained_model_path} ...")
-
-        config_file = os.path.join(pretrained_model_path, 'config.json')
-        if not os.path.isfile(config_file):
-            raise RuntimeError(f"{config_file} does not exist")
-        with open(config_file, "r") as f:
-            config = json.load(f)
-
-        from diffusers.utils import WEIGHTS_NAME
-        model = cls.from_config(config, **transformer_additional_kwargs)
-        model_file = os.path.join(pretrained_model_path, WEIGHTS_NAME)
-        model_file_safetensors = model_file.replace(".bin", ".safetensors")
-        if os.path.exists(model_file):
-            state_dict = torch.load(model_file, map_location="cpu")
-        elif os.path.exists(model_file_safetensors):
-            from safetensors.torch import load_file, safe_open
-            state_dict = load_file(model_file_safetensors)
-        else:
-            from safetensors.torch import load_file, safe_open
-            model_files_safetensors = glob.glob(os.path.join(pretrained_model_path, "*.safetensors"))
-            state_dict = {}
-            for model_file_safetensors in model_files_safetensors:
-                _state_dict = load_file(model_file_safetensors)
-                for key in _state_dict:
-                    state_dict[key] = _state_dict[key]
-        
-        if model.state_dict()['patch_embed.proj.weight'].size() != state_dict['patch_embed.proj.weight'].size():
-            new_shape   = model.state_dict()['patch_embed.proj.weight'].size()
-            if len(new_shape) == 5:
-                state_dict['patch_embed.proj.weight'] = state_dict['patch_embed.proj.weight'].unsqueeze(2).expand(new_shape).clone()
-                state_dict['patch_embed.proj.weight'][:, :, :-1] = 0
-            else:
-                if model.state_dict()['patch_embed.proj.weight'].size()[1] > state_dict['patch_embed.proj.weight'].size()[1]:
-                    model.state_dict()['patch_embed.proj.weight'][:, :state_dict['patch_embed.proj.weight'].size()[1], :, :] = state_dict['patch_embed.proj.weight']
-                    model.state_dict()['patch_embed.proj.weight'][:, state_dict['patch_embed.proj.weight'].size()[1]:, :, :] = 0
-                    state_dict['patch_embed.proj.weight'] = model.state_dict()['patch_embed.proj.weight']
-                else:
-                    model.state_dict()['patch_embed.proj.weight'][:, :, :, :] = state_dict['patch_embed.proj.weight'][:, :model.state_dict()['patch_embed.proj.weight'].size()[1], :, :]
-                    state_dict['patch_embed.proj.weight'] = model.state_dict()['patch_embed.proj.weight']
-
-        tmp_state_dict = {} 
-        for key in state_dict:
-            if key in model.state_dict().keys() and model.state_dict()[key].size() == state_dict[key].size():
-                tmp_state_dict[key] = state_dict[key]
-            else:
-                print(key, "Size don't match, skip")
-        state_dict = tmp_state_dict
-
-        m, u = model.load_state_dict(state_dict, strict=False)
-        print(f"### missing keys: {len(m)}; \n### unexpected keys: {len(u)};")
-        print(m)
-        
-        params = [p.numel() if "mamba" in n else 0 for n, p in model.named_parameters()]
-        print(f"### Mamba Parameters: {sum(params) / 1e6} M")
-
-        params = [p.numel() if "attn1." in n else 0 for n, p in model.named_parameters()]
-        print(f"### attn1 Parameters: {sum(params) / 1e6} M")
-        
-        return model

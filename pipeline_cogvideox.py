@@ -20,12 +20,14 @@ import torch
 import torch.nn.functional as F
 import math
 
-from diffusers.models import AutoencoderKLCogVideoX, CogVideoXTransformer3DModel
+from diffusers.models import AutoencoderKLCogVideoX#, CogVideoXTransformer3DModel
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
+
+from .custom_cogvideox_transformer_3d import CogVideoXTransformer3DModel
 
 from comfy.utils import ProgressBar
 
