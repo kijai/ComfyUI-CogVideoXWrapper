@@ -432,7 +432,17 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
+    
+    def _gaussian_weights(self, t_tile_length, t_batch_size):
+        from numpy import pi, exp, sqrt
 
+        var = 0.01
+        midpoint = (t_tile_length - 1) / 2  # -1 because index goes from 0 to latent_width - 1
+        t_probs = [exp(-(t-midpoint)*(t-midpoint)/(t_tile_length*t_tile_length)/(2*var)) / sqrt(2*pi*var) for t in range(t_tile_length)]
+        weights = torch.tensor(t_probs)
+        weights = weights.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4).repeat(1, t_batch_size,1, 1, 1)
+        return weights
+    
     # Copied from diffusers.pipelines.latte.pipeline_latte.LattePipeline.check_inputs
     def check_inputs(
         self,
@@ -869,7 +879,6 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
             use_context_schedule = True
             from .context import get_context_scheduler
             context = get_context_scheduler(context_schedule)
-
         else:
             use_temporal_tiling = False
             use_context_schedule = False
