@@ -419,7 +419,8 @@ class DownloadAndLoadCogVideoModel:
             "base_path": base_path,
             "onediff": True if compile == "onediff" else False,
             "cpu_offloading": enable_sequential_cpu_offload,
-            "scheduler_config": scheduler_config
+            "scheduler_config": scheduler_config,
+            "model_name": model
         }
 
         return (pipeline,)
@@ -588,7 +589,8 @@ class DownloadAndLoadCogVideoGGUFModel:
             "base_path": model,
             "onediff": True if compile == "onediff" else False,
             "cpu_offloading": enable_sequential_cpu_offload,
-            "scheduler_config": scheduler_config
+            "scheduler_config": scheduler_config,
+            "model_name": model
         }
 
         return (pipeline,)
@@ -868,6 +870,7 @@ class CogVideoSampler:
         base_path = pipeline["base_path"]
 
         assert "fun" not in base_path.lower(), "'Fun' models not supported in 'CogVideoSampler', use the 'CogVideoXFunSampler'"
+        assert ("I2V" not in pipeline["model_name"] or num_frames == 49 or context_options is not None), "I2V model can only do 49 frames"
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
