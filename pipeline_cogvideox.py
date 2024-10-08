@@ -678,8 +678,6 @@ class CogVideoXPipeline(VideoSysPipeline):
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                     counter = torch.zeros_like(latent_model_input)
                     noise_pred = torch.zeros_like(latent_model_input)
-                    if do_classifier_free_guidance:
-                        noise_uncond = torch.zeros_like(latent_model_input)
                     
                     if image_cond_latents is not None:
                         latent_image_input = torch.cat([image_cond_latents] * 2) if do_classifier_free_guidance else image_cond_latents
@@ -688,18 +686,49 @@ class CogVideoXPipeline(VideoSysPipeline):
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
 
+                    current_step_percentage = i / num_inference_steps
+
                     context_queue = list(context(
                         i, num_inference_steps, latents.shape[1], context_frames, context_stride, context_overlap,
-                    ))                    
+                    ))
+                    # controlnet frames are not temporally compressed, so try to match the context frames that are
+                    control_context_queue = list(context(
+                        i, 
+                        num_inference_steps, 
+                        control_frames.shape[1], 
+                        context_frames * self.vae_scale_factor_temporal, 
+                        context_stride * self.vae_scale_factor_temporal, 
+                        context_overlap * self.vae_scale_factor_temporal,
+                    ))
 
+                    # use same rotary embeddings for all context windows
                     image_rotary_emb = (
                             self._prepare_rotary_positional_embeddings(height, width, context_frames, device)
                             if self.transformer.config.use_rotary_positional_embeddings
                             else None
                         )
 
-                    for c in context_queue:
+                    for c, control_c in zip(context_queue, control_context_queue):
                         partial_latent_model_input = latent_model_input[:, c, :, :, :]
+                        partial_control_frames = control_frames[:, control_c, :, :, :]
+
+                        controlnet_states = None
+                    
+                        if (control_start <= current_step_percentage <= control_end):
+                            # extract controlnet hidden state
+                            controlnet_states = self.controlnet(
+                                hidden_states=partial_latent_model_input,
+                                encoder_hidden_states=prompt_embeds,
+                                image_rotary_emb=image_rotary_emb,
+                                controlnet_states=partial_control_frames,
+                                timestep=timestep,
+                                return_dict=False,
+                            )[0]
+                            if isinstance(controlnet_states, (tuple, list)):
+                                controlnet_states = [x.to(dtype=self.vae.dtype) for x in controlnet_states]
+                            else:
+                                controlnet_states = controlnet_states.to(dtype=self.vae.dtype)
+  
                         # predict noise model_output
                         noise_pred[:, c, :, :, :] += self.transformer(
                             hidden_states=partial_latent_model_input,
@@ -707,17 +736,9 @@ class CogVideoXPipeline(VideoSysPipeline):
                             timestep=timestep,
                             image_rotary_emb=image_rotary_emb,
                             return_dict=False,
+                            controlnet_states=controlnet_states,
+                            controlnet_weights=control_strength,
                         )[0]
-
-                        # uncond
-                        if do_classifier_free_guidance:
-                            noise_uncond[:, c, :, :, :] += self.transformer(
-                                hidden_states=partial_latent_model_input,
-                                encoder_hidden_states=prompt_embeds,
-                                timestep=timestep,
-                                image_rotary_emb=image_rotary_emb,
-                                return_dict=False,
-                            )[0]
 
                         counter[:, c, :, :, :] += 1
                         noise_pred = noise_pred.float()
@@ -757,10 +778,10 @@ class CogVideoXPipeline(VideoSysPipeline):
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
 
-                    current_sampling_percent = i / len(timesteps)
+                    current_step_percentage = i / num_inference_steps
 
                     controlnet_states = None
-                    if (control_start < current_sampling_percent < control_end):
+                    if (control_start <= current_step_percentage <= control_end):
                         # extract controlnet hidden state
                         controlnet_states = self.controlnet(
                             hidden_states=latent_model_input,

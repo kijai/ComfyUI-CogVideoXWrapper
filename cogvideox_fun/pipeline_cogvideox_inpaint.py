@@ -984,9 +984,6 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                     latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                    # Calculate the current step percentage
-                    current_step_percentage = i / num_inference_steps
-
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
 
@@ -995,8 +992,6 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                     ))
                     counter = torch.zeros_like(latent_model_input)
                     noise_pred = torch.zeros_like(latent_model_input)
-                    if do_classifier_free_guidance:
-                        noise_uncond = torch.zeros_like(latent_model_input)
 
                     image_rotary_emb = (
                             self._prepare_rotary_positional_embeddings(height, width, context_frames, device)
@@ -1020,15 +1015,6 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                         )[0]
                         
                         counter[:, c, :, :, :] += 1
-                        if do_classifier_free_guidance:
-                            noise_uncond[:, c, :, :, :] += self.transformer(
-                                hidden_states=partial_latent_model_input,
-                                encoder_hidden_states=prompt_embeds,
-                                timestep=timestep,
-                                image_rotary_emb=image_rotary_emb,
-                                return_dict=False,
-                                inpaint_latents=partial_inpaint_latents,
-                            )[0]
                         
                         noise_pred = noise_pred.float()
                         

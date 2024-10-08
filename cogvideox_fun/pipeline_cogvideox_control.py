@@ -829,8 +829,6 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                     ))
                     counter = torch.zeros_like(latent_model_input)
                     noise_pred = torch.zeros_like(latent_model_input)
-                    if do_classifier_free_guidance:
-                        noise_uncond = torch.zeros_like(latent_model_input)
 
                     image_rotary_emb = (
                             self._prepare_rotary_positional_embeddings(height, width, context_frames, device)
@@ -851,17 +849,6 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                             return_dict=False,
                             control_latents=partial_control_latents,
                         )[0]
-                        
-                        # uncond
-                        if do_classifier_free_guidance:
-                            noise_uncond[:, c, :, :, :] += self.transformer(
-                                hidden_states=partial_latent_model_input,
-                                encoder_hidden_states=prompt_embeds,
-                                timestep=timestep,
-                                image_rotary_emb=image_rotary_emb,
-                                return_dict=False,
-                                control_latents=partial_control_latents,
-                            )[0]
 
                         counter[:, c, :, :, :] += 1
                         noise_pred = noise_pred.float()
