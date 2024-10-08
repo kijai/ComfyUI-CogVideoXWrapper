@@ -870,7 +870,7 @@ class CogVideoSampler:
         base_path = pipeline["base_path"]
 
         assert "fun" not in base_path.lower(), "'Fun' models not supported in 'CogVideoSampler', use the 'CogVideoXFunSampler'"
-        assert ("I2V" not in pipeline["model_name"] or num_frames == 49 or context_options is not None), "I2V model can only do 49 frames"
+        assert ("I2V" not in pipeline.get("model_name","") or num_frames == 49 or context_options is not None), "I2V model can only do 49 frames"
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
