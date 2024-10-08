@@ -1358,7 +1358,7 @@ class CogVideoControlNet:
         controlnet = {
             "control_model": controlnet,
             "control_frames": control_frames,
-            "control_strength": control_strength,
+            "control_weights": control_strength,
             "control_start": control_start_percent,
             "control_end": control_end_percent,
         }
