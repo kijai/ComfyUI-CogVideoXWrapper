@@ -505,7 +505,7 @@
       },
       "widgets_values": [
         "THUDM/CogVideoX-2b",
-        "bf16",
+        "fp16",
         "disabled",
         "disabled",
         false
