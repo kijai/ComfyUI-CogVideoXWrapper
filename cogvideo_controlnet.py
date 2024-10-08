@@ -5,7 +5,7 @@ import torch
 from torch import nn
 from einops import rearrange
 import torch.nn.functional as F
-from diffusers.models.transformers.cogvideox_transformer_3d import Transformer2DModelOutput, CogVideoXBlock
+from .custom_cogvideox_transformer_3d import Transformer2DModelOutput, CogVideoXBlock
 from diffusers.utils import is_torch_version
 from diffusers.loaders import  PeftAdapterMixin
 from diffusers.models.embeddings import CogVideoXPatchEmbed, TimestepEmbedding, Timesteps
