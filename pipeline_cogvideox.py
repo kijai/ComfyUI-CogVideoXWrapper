@@ -387,6 +387,8 @@ class CogVideoXPipeline(VideoSysPipeline):
         context_stride: Optional[int] = None,
         context_overlap: Optional[int] = None,
         freenoise: Optional[bool] = True,
+        controlnet: Optional[dict] = None,
+        
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -536,7 +538,7 @@ class CogVideoXPipeline(VideoSysPipeline):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
         comfy_pbar = ProgressBar(num_inference_steps)
 
-        # 8.5. Temporal tiling prep
+        # 8. context schedule and temporal tiling
         if context_schedule is not None and context_schedule == "temporal_tiling":
             t_tile_length = context_frames
             t_tile_overlap = context_overlap
@@ -562,7 +564,17 @@ class CogVideoXPipeline(VideoSysPipeline):
                 if self.transformer.config.use_rotary_positional_embeddings
                 else None
             )
-        
+        # 9. Controlnet
+
+        if controlnet is not None:
+            self.controlnet = controlnet["control_model"].to(device)
+            control_frames = controlnet["control_frames"].to(device).to(self.vae.dtype).contiguous()
+            control_frames = torch.cat([control_frames] * 2) if do_classifier_free_guidance else control_frames
+            control_strength = controlnet["control_strength"]
+            control_start = controlnet["control_start"]
+            control_end = controlnet["control_end"]
+
+        # 10. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:    
             old_pred_original_sample = None # for DPM-solver++
             for i, t in enumerate(timesteps):
@@ -744,6 +756,26 @@ class CogVideoXPipeline(VideoSysPipeline):
 
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
+
+                    current_sampling_percent = i / len(timesteps)
+
+                    controlnet_states = None
+                    if (control_start < current_sampling_percent < control_end):
+                        # extract controlnet hidden state
+                        controlnet_states = self.controlnet(
+                            hidden_states=latent_model_input,
+                            encoder_hidden_states=prompt_embeds,
+                            image_rotary_emb=image_rotary_emb,
+                            controlnet_states=control_frames,
+                            timestep=timestep,
+                            return_dict=False,
+                        )[0]
+                        if isinstance(controlnet_states, (tuple, list)):
+                            controlnet_states = [x.to(dtype=self.transformer.dtype) for x in controlnet_states]
+                        else:
+                            controlnet_states = controlnet_states.to(dtype=self.transformer.dtype)
+
+                    
                     # predict noise model_output
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
@@ -751,6 +783,8 @@ class CogVideoXPipeline(VideoSysPipeline):
                         timestep=timestep,
                         image_rotary_emb=image_rotary_emb,
                         return_dict=False,
+                        controlnet_states=controlnet_states,
+                        controlnet_weights=control_strength,
                     )[0]
                     noise_pred = noise_pred.float()
 

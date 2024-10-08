@@ -594,6 +594,52 @@ class DownloadAndLoadCogVideoGGUFModel:
         }
 
         return (pipeline,)
+
+class DownloadAndLoadCogVideoControlNet:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": (
+                    [
+                        "TheDenk/cogvideox-2b-controlnet-hed-v1",
+                        "TheDenk/cogvideox-2b-controlnet-canny-v1",
+                    ],
+                ),
+
+            },
+        }
+
+    RETURN_TYPES = ("COGVIDECONTROLNETMODEL",)
+    RETURN_NAMES = ("cogvideo_controlnet", )
+    FUNCTION = "loadmodel"
+    CATEGORY = "CogVideoWrapper"
+
+    def loadmodel(self, model):
+        from .cogvideo_controlnet import CogVideoXControlnet
+
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        mm.soft_empty_cache()
+
+        
+        download_path = os.path.join(folder_paths.models_dir, 'CogVideo', 'ControlNet')
+        base_path = os.path.join(download_path, (model.split("/")[-1]))
+        
+        if not os.path.exists(base_path):
+            log.info(f"Downloading model to: {base_path}")
+            from huggingface_hub import snapshot_download
+
+            snapshot_download(
+                repo_id=model,
+                ignore_patterns=["*text_encoder*", "*tokenizer*"],
+                local_dir=base_path,
+                local_dir_use_symlinks=False,
+            )
+
+        controlnet = CogVideoXControlnet.from_pretrained(base_path)
+
+        return (controlnet,)
     
 class CogVideoEncodePrompt:
     @classmethod
@@ -855,6 +901,7 @@ class CogVideoSampler:
                 "denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
                 "image_cond_latents": ("LATENT", ),
                 "context_options": ("COGCONTEXT", ),
+                "controlnet": ("COGVIDECONTROLNET",),
             }
         }
 
@@ -864,7 +911,7 @@ class CogVideoSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, pipeline, positive, negative, steps, cfg, seed, height, width, num_frames, scheduler, samples=None, 
-                denoise_strength=1.0, image_cond_latents=None, context_options=None):
+                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None):
         mm.soft_empty_cache()
 
         base_path = pipeline["base_path"]
@@ -921,7 +968,8 @@ class CogVideoSampler:
                 context_frames=context_frames,
                 context_stride= context_stride,
                 context_overlap= context_overlap,
-                freenoise=context_options["freenoise"] if context_options is not None else None
+                freenoise=context_options["freenoise"] if context_options is not None else None,
+                controlnet=controlnet
             )
         if not pipeline["cpu_offloading"]:
             pipe.transformer.to(offload_device)
@@ -1281,6 +1329,41 @@ class CogVideoControlImageEncode:
         }
         
         return (control_latents, width, height)
+    
+class CogVideoControlNet:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "controlnet": ("COGVIDECONTROLNETMODEL",),
+            "images": ("IMAGE", ),
+            "control_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
+            "control_start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+            "control_end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+            },
+        }
+
+    RETURN_TYPES = ("COGVIDECONTROLNET",)
+    RETURN_NAMES = ("cogvideo_controlnet",)
+    FUNCTION = "encode"
+    CATEGORY = "CogVideoWrapper"
+
+    def encode(self, controlnet, images, control_strength, control_start_percent, control_end_percent):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+
+        B, H, W, C = images.shape
+
+        control_frames = images.permute(0, 3, 1, 2).unsqueeze(0) * 2 - 1
+      
+        controlnet = {
+            "control_model": controlnet,
+            "control_frames": control_frames,
+            "control_strength": control_strength,
+            "control_start": control_start_percent,
+            "control_end": control_end_percent,
+        }
+        
+        return (controlnet,)
 
     
 class CogVideoContextOptions:
@@ -1427,7 +1510,9 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoTransformerEdit": CogVideoTransformerEdit,
     "CogVideoControlImageEncode": CogVideoControlImageEncode,
     "CogVideoLoraSelect": CogVideoLoraSelect,
-    "CogVideoContextOptions": CogVideoContextOptions
+    "CogVideoContextOptions": CogVideoContextOptions,
+    "CogVideoControlNet": CogVideoControlNet,
+    "DownloadAndLoadCogVideoControlNet": DownloadAndLoadCogVideoControlNet
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -1445,5 +1530,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoTransformerEdit": "CogVideo TransformerEdit",
     "CogVideoControlImageEncode": "CogVideo Control ImageEncode",
     "CogVideoLoraSelect": "CogVideo LoraSelect",
-    "CogVideoContextOptions": "CogVideo Context Options"
+    "CogVideoContextOptions": "CogVideo Context Options",
+    "DownloadAndLoadCogVideoControlNet": "(Down)load CogVideo ControlNet"
     }

@@ -19,6 +19,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+import numpy as np
+
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils import is_torch_version, logging
 from diffusers.utils.torch_utils import maybe_allow_in_graph
@@ -566,6 +568,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         timestep: Union[int, float, torch.LongTensor],
         timestep_cond: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        controlnet_states: torch.Tensor = None,
+        controlnet_weights: Optional[Union[float, int, list, np.ndarray, torch.FloatTensor]] = 1.0,
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
@@ -614,6 +618,16 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                     temb=emb,
                     image_rotary_emb=image_rotary_emb,
                 )
+
+            if (controlnet_states is not None) and (i < len(controlnet_states)):
+                controlnet_states_block = controlnet_states[i]
+                controlnet_block_weight = 1.0
+                if isinstance(controlnet_weights, (list, np.ndarray)) or torch.is_tensor(controlnet_weights):
+                    controlnet_block_weight = controlnet_weights[i]
+                elif isinstance(controlnet_weights, (float, int)):
+                    controlnet_block_weight = controlnet_weights
+                
+                hidden_states = hidden_states + controlnet_states_block * controlnet_block_weight
 
         if not self.config.use_rotary_positional_embeddings:
             # CogVideoX-2B
