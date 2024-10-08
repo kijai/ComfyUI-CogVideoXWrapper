@@ -570,14 +570,16 @@ class CogVideoXPipeline(VideoSysPipeline):
             self.controlnet = controlnet["control_model"].to(device)
             if self.transformer.dtype == torch.float8_e4m3fn:
                 for name, param in self.controlnet.named_parameters():
-                    if "patch_embed" not in name:
-                            param.data = param.data.to(torch.float8_e4m3fn)
+                    if "patch_embed" not in name and param.data.dtype != torch.float8_e4m3fn:
+                        param.data = param.data.to(torch.float8_e4m3fn)
             else:
                 self.controlnet.to(self.transformer.dtype)
             
             if getattr(self.transformer, 'fp8_matmul_enabled', False):
                 from .fp8_optimization import convert_fp8_linear
-                convert_fp8_linear(self.controlnet, torch.float16)
+                if not hasattr(self.controlnet, 'fp8_matmul_enabled') or not self.controlnet.fp8_matmul_enabled:
+                    convert_fp8_linear(self.controlnet, torch.float16)
+                    setattr(self.controlnet, "fp8_matmul_enabled", True)
             
             control_frames = controlnet["control_frames"].to(device).to(self.controlnet.dtype).contiguous()
             control_frames = torch.cat([control_frames] * 2) if do_classifier_free_guidance else control_frames
