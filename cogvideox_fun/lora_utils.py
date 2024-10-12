@@ -476,8 +476,9 @@ def unmerge_lora(pipeline, lora_path, multiplier=1, device="cpu", dtype=torch.fl
 
     return pipeline
 
-def load_lora_into_transformer(state_dict, transformer, adapter_name=None):
+def load_lora_into_transformer(state_dict, transformer, adapter_name=None, strength=1.0):
         from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+        from peft.tuners.tuners_utils import BaseTunerLayer
         from diffusers.utils.peft_utils import get_peft_kwargs, get_adapter_name
         from diffusers.utils.import_utils import is_peft_version
         from diffusers.utils.state_dict_utils import convert_unet_state_dict_to_peft
@@ -522,4 +523,10 @@ def load_lora_into_transformer(state_dict, transformer, adapter_name=None):
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                         f" {unexpected_keys}. "
                     )
+
+            if strength != 1.0:
+                for module in transformer.modules():
+                    if isinstance(module, BaseTunerLayer):
+                        #print(f"Setting strength for {module}")
+                        module.scale_layer(strength)
         return transformer

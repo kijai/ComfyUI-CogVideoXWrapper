@@ -356,7 +356,7 @@ class DownloadAndLoadCogVideoModel:
                 transformer = merge_lora(transformer, lora["path"], lora["strength"])
             else:
                 lora_sd = load_torch_file(lora["path"])
-                transformer = load_lora_into_transformer(state_dict=lora_sd, transformer=transformer, adapter_name=lora["name"])
+                transformer = load_lora_into_transformer(state_dict=lora_sd, transformer=transformer, adapter_name=lora["name"], strength=lora["strength"])
 
         if block_edit is not None:
             transformer = remove_specific_blocks(transformer, block_edit)
