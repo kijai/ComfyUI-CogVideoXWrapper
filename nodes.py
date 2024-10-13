@@ -836,6 +836,7 @@ class CogVideoImageEncode:
         if not pipeline["cpu_offloading"]:
             vae.to(device)
 
+        check_diffusers_version()
         vae._clear_fake_context_parallel_cache()
         
         input_image = image.clone()
