@@ -751,14 +751,18 @@ class CogVideoTextEncode:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, clip, prompt, strength=1.0, force_offload=True):
+        max_tokens = 226
         load_device = mm.text_encoder_device()
         offload_device = mm.text_encoder_offload_device()
         clip.tokenizer.t5xxl.pad_to_max_length = True
-        clip.tokenizer.t5xxl.max_length = 226
+        clip.tokenizer.t5xxl.max_length = max_tokens
         clip.cond_stage_model.to(load_device)
         tokens = clip.tokenize(prompt, return_word_ids=True)
-
+        
         embeds = clip.encode_from_tokens(tokens, return_pooled=False, return_dict=False)
+
+        if embeds.shape[1] > 226:
+            raise ValueError(f"Prompt is too long, max tokens supported is {max_tokens} or less, got {embeds.shape[1]}")
         embeds *= strength
         if force_offload:
             clip.cond_stage_model.to(offload_device)
