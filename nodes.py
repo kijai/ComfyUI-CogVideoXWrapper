@@ -258,6 +258,7 @@ class DownloadAndLoadCogVideoModel:
                         "alibaba-pai/CogVideoX-Fun-V1.1-5b-InP",
                         "alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose",
                         "alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose",
+                        "feizhengcong/CogvideoX-Interpolation",
                     ],
                 ),
 
@@ -313,14 +314,15 @@ class DownloadAndLoadCogVideoModel:
             base_path = os.path.join(download_path, "CogVideo2B")
             download_path = base_path
             repo_id = model
-        elif "5b" in model:
+        else:
             base_path = os.path.join(download_path, (model.split("/")[-1]))
             download_path = base_path
             repo_id = model
+            
 
         if "2b" in model:
             scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
-        elif "5b" in model:
+        else:
             scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
         
         if not os.path.exists(base_path):
@@ -799,7 +801,7 @@ class CogVideoImageEncode:
             "image": ("IMAGE", ),
             },
             "optional": {
-                "chunk_size": ("INT", {"default": 16, "min": 1}),
+                "chunk_size": ("INT", {"default": 16, "min": 4}),
                 "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
                 "mask": ("MASK", ),
             },
@@ -867,6 +869,77 @@ class CogVideoImageEncode:
             latents = vae.config.scaling_factor * latents
             latents = latents.permute(0, 2, 1, 3, 4)  # B, T_chunk, C, H, W
             latents_list.append(latents)
+
+        # Concatenate all the chunks along the temporal dimension
+        final_latents = torch.cat(latents_list, dim=1)
+        log.info(f"Encoded latents shape: {final_latents.shape}")
+        if not pipeline["cpu_offloading"]:
+            vae.to(offload_device)
+        
+        return ({"samples": final_latents}, )
+    
+class CogVideoImageInterpolationEncode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "pipeline": ("COGVIDEOPIPE",),
+            "start_image": ("IMAGE", ),
+            "end_image": ("IMAGE", ),
+            },
+            "optional": {
+                "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
+                "mask": ("MASK", ),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("samples",)
+    FUNCTION = "encode"
+    CATEGORY = "CogVideoWrapper"
+
+    def encode(self, pipeline, start_image, end_image, chunk_size=8, enable_tiling=False, mask=None):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        generator = torch.Generator(device=device).manual_seed(0)
+
+        B, H, W, C = start_image.shape
+
+        vae = pipeline["pipe"].vae
+        vae.enable_slicing()
+        
+        if enable_tiling:
+            from .mz_enable_vae_encode_tiling import enable_vae_encode_tiling
+            enable_vae_encode_tiling(vae)
+
+        if not pipeline["cpu_offloading"]:
+            vae.to(device)
+
+        check_diffusers_version()
+        vae._clear_fake_context_parallel_cache()
+        
+        if mask is not None:
+            pipeline["pipe"].original_mask = mask
+            # print(mask.shape)
+            # mask = mask.repeat(B, 1, 1)  # Shape: [B, H, W]
+            # mask = mask.unsqueeze(-1).repeat(1, 1, 1, C)
+            # print(mask.shape)
+            # input_image = input_image * (1 -mask)
+        else:
+            pipeline["pipe"].original_mask = None
+            
+        start_image = (start_image * 2.0 - 1.0).to(vae.dtype).to(device).unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
+        end_image = (end_image * 2.0 - 1.0).to(vae.dtype).to(device).unsqueeze(0).permute(0, 4, 1, 2, 3)
+        B, T, C, H, W = start_image.shape
+
+        latents_list = []           
+
+        # Encode the chunk of images
+        start_latents = vae.encode(start_image).latent_dist.sample(generator) * vae.config.scaling_factor
+        end_latents = vae.encode(end_image).latent_dist.sample(generator) * vae.config.scaling_factor
+
+        start_latents = start_latents.permute(0, 2, 1, 3, 4)  # B, T, C, H, W
+        end_latents = end_latents.permute(0, 2, 1, 3, 4)  # B, T, C, H, W
+        latents_list = [start_latents, end_latents]
 
         # Concatenate all the chunks along the temporal dimension
         final_latents = torch.cat(latents_list, dim=1)
@@ -1500,6 +1573,7 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoTextEncode": CogVideoTextEncode,
     "CogVideoDualTextEncode_311": CogVideoDualTextEncode_311,
     "CogVideoImageEncode": CogVideoImageEncode,
+    "CogVideoImageInterpolationEncode": CogVideoImageInterpolationEncode,
     "CogVideoXFunSampler": CogVideoXFunSampler,
     "CogVideoXFunVid2VidSampler": CogVideoXFunVid2VidSampler,
     "CogVideoXFunControlSampler": CogVideoXFunControlSampler,
@@ -1520,6 +1594,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoTextEncode": "CogVideo TextEncode",
     "CogVideoDualTextEncode_311": "CogVideo DualTextEncode",
     "CogVideoImageEncode": "CogVideo ImageEncode",
+    "CogVideoImageInterpolationEncode": "CogVideo ImageInterpolation Encode",
     "CogVideoXFunSampler": "CogVideoXFun Sampler",
     "CogVideoXFunVid2VidSampler": "CogVideoXFun Vid2Vid Sampler",
     "CogVideoXFunControlSampler": "CogVideoXFun Control Sampler",

@@ -501,15 +501,34 @@ class CogVideoXPipeline(VideoSysPipeline):
 
         # 5.5.
         if image_cond_latents is not None:
-            padding_shape = (
+            if image_cond_latents.shape[1] > 1:
+                logger.info("More than one image conditioning frame received, interpolating")
+                padding_shape = (
                 batch_size,
-                (latents.shape[1] - 1),
+                (latents.shape[1] - 2),
                 self.vae.config.latent_channels,
                 height // self.vae_scale_factor_spatial,
                 width // self.vae_scale_factor_spatial,
-            )
-            latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae.dtype)
-            image_cond_latents = torch.cat([image_cond_latents, latent_padding], dim=1)
+                )
+                print("padding_shape: ", padding_shape)
+                latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae.dtype)
+                print(image_cond_latents.shape)
+                print(image_cond_latents[:, 0, :, :, :].shape)
+                print(image_cond_latents[:, -1, :, :, :].shape)
+
+                image_cond_latents = torch.cat([image_cond_latents[:, 0, :, :, :].unsqueeze(1), latent_padding, image_cond_latents[:, -1, :, :, :].unsqueeze(1)], dim=1)
+                print("image cond latents shape",image_cond_latents.shape)
+            else:
+                logger.info("Only one image conditioning frame received, img2vid")
+                padding_shape = (
+                    batch_size,
+                    (latents.shape[1] - 1),
+                    self.vae.config.latent_channels,
+                    height // self.vae_scale_factor_spatial,
+                    width // self.vae_scale_factor_spatial,
+                )
+                latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae.dtype)
+                image_cond_latents = torch.cat([image_cond_latents, latent_padding], dim=1)
        
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
