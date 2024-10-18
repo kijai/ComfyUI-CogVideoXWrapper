@@ -1019,7 +1019,9 @@ class CogVideoSampler:
             padding = torch.zeros((negative.shape[0], target_length - negative.shape[1], negative.shape[2]), device=negative.device)
             negative = torch.cat((negative, padding), dim=1)
 
-        autocastcondition = not pipeline["onediff"]
+        # Note: if we're on MPS return False, otherwise check for onediff as normal
+        # TODO: Torch 2.5+ is supposed to add AMP support for MPS ... not available currently.
+        autocastcondition = not pipeline["onediff"] if not torch.backends.mps.is_available() else False
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
             latents = pipeline["pipe"](
@@ -1189,7 +1191,9 @@ class CogVideoXFunSampler:
 
         generator= torch.Generator(device="cpu").manual_seed(seed)
 
-        autocastcondition = not pipeline["onediff"]
+        # Note: if we're on MPS return False, otherwise check for onediff as normal
+        # TODO: Torch 2.5+ is supposed to add AMP support for MPS ... not available currently.
+        autocastcondition = not pipeline["onediff"] if not torch.backends.mps.is_available() else False 
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
             video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
@@ -1284,7 +1288,9 @@ class CogVideoXFunVid2VidSampler:
 
         generator= torch.Generator(device).manual_seed(seed)
 
-        autocastcondition = not pipeline["onediff"]
+        # Note: if we're on MPS return False, otherwise check for onediff as normal
+        # TODO: Torch 2.5+ is supposed to add AMP support for MPS ... not available currently.
+        autocastcondition = not pipeline["onediff"] if not torch.backends.mps.is_available() else False
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
             video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
@@ -1531,7 +1537,9 @@ class CogVideoXFunControlSampler:
 
         generator=torch.Generator(torch.device("cpu")).manual_seed(seed)
 
-        autocastcondition = not pipeline["onediff"]
+        # Note: if we're on MPS return False, otherwise check for onediff as normal
+        # TODO: Torch 2.5+ is supposed to add AMP support for MPS ... not available currently.
+        autocastcondition = not pipeline["onediff"] if not torch.backends.mps.is_available() else False
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
 
