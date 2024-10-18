@@ -76,3 +76,9 @@ https://github.com/user-attachments/assets/ecdac8b8-d434-48b6-abd6-90755b6b552d
 
 Original repo:
 https://github.com/THUDM/CogVideo
+
+CogVideoX-Fun:
+https://github.com/aigc-apps/CogVideoX-Fun
+
+Controlnet:
+https://github.com/TheDenk/cogvideox-controlnet
