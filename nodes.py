@@ -433,6 +433,7 @@ class DownloadAndLoadCogVideoGGUFModel:
                         "CogVideoX_5b_fun_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_1_1_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_1_1_Pose_GGUF_Q4_0.safetensors",
+                        "CogVideoX_5b_Interpolation_GGUF_Q4_0.safetensors",
                     ],
                 ),
             "vae_precision": (["fp16", "fp32", "bf16"], {"default": "bf16", "tooltip": "VAE dtype"}),
@@ -465,7 +466,7 @@ class DownloadAndLoadCogVideoGGUFModel:
         if not os.path.exists(gguf_path):
             gguf_path = os.path.join(download_path, model)
             if not os.path.exists(gguf_path):
-                if "I2V" in model or "1_1" in model:
+                if "I2V" in model or "1_1" in model or "Interpolation" in model:
                     repo_id = "Kijai/CogVideoX_GGUF"
                 else:
                     repo_id = "MinusZoneAI/ComfyUI-CogVideoX-MZ"
@@ -505,7 +506,7 @@ class DownloadAndLoadCogVideoGGUFModel:
                     transformer = CogVideoXTransformer3DModelFunPAB.from_config(transformer_config)
                 else:
                     transformer = CogVideoXTransformer3DModelFun.from_config(transformer_config)
-            elif "I2V" in model:
+            elif "I2V" in model or "Interpolation" in model:
                 transformer_config["in_channels"] = 32
                 if pab_config is not None:
                     transformer = CogVideoXTransformer3DModelPAB.from_config(transformer_config)
