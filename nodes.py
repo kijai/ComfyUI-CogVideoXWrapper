@@ -988,41 +988,6 @@ class ToraEncodeTrajectory:
     def INPUT_TYPES(s):
         return {"required": {
             "pipeline": ("COGVIDEOPIPE",),
-            "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
-            "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
-            "num_frames": ("INT", {"default": 49, "min": 16, "max": 1024, "step": 1}),
-            },
-        }
-
-    RETURN_TYPES = ("TORATRAJLIST",)
-    RETURN_NAMES = ("tora_traj_list",)
-    FUNCTION = "encode"
-    CATEGORY = "CogVideoWrapper"
-
-    def encode(self, pipeline, width, height, num_frames):
-        device = mm.get_torch_device()
-        offload_device = mm.unet_offload_device()
-        generator = torch.Generator(device=device).manual_seed(0)
-
-        transformer = pipeline["pipe"].transformer
-        vae = pipeline["pipe"].vae
-        vae.enable_slicing()
-
-        canvas_width, canvas_height = 256, 256
-        traj_list = PROVIDED_TRAJS["infinity"]
-        traj_list_range_256 = scale_traj_list_to_256(traj_list, canvas_width, canvas_height)
-
-
-        return (traj_list_range_256, )
-    
-from .tora.traj_utils import process_traj, scale_traj_list_to_256, PROVIDED_TRAJS
-from torchvision.utils import flow_to_image
-
-class ToraEncodeTrajectory:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {
-            "pipeline": ("COGVIDEOPIPE",),
             "coordinates": ("STRING", {"forceInput": True}),
             "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
             "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
