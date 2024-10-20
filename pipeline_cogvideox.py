@@ -161,6 +161,8 @@ class CogVideoXPipeline(VideoSysPipeline):
         self.original_mask = original_mask
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
+        self.traj_extractor = None
+
         if pab_config is not None:
             set_pab_manager(pab_config)
 
@@ -388,6 +390,7 @@ class CogVideoXPipeline(VideoSysPipeline):
         context_overlap: Optional[int] = None,
         freenoise: Optional[bool] = True,
         controlnet: Optional[dict] = None,
+        video_flow_features: Optional[torch.Tensor] = None,
         
     ):
         """
@@ -848,7 +851,8 @@ class CogVideoXPipeline(VideoSysPipeline):
                             if isinstance(controlnet_states, (tuple, list)):
                                 controlnet_states = [x.to(dtype=self.vae.dtype) for x in controlnet_states]
                             else:
-                                controlnet_states = controlnet_states.to(dtype=self.vae.dtype)                       
+                                controlnet_states = controlnet_states.to(dtype=self.vae.dtype)
+
 
                     # predict noise model_output
                     noise_pred = self.transformer(
@@ -859,6 +863,7 @@ class CogVideoXPipeline(VideoSysPipeline):
                         return_dict=False,
                         controlnet_states=controlnet_states,
                         controlnet_weights=control_weights,
+                        video_flow_features=video_flow_features,
                     )[0]
                     noise_pred = noise_pred.float()
 

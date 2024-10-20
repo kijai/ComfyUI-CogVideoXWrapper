@@ -20,6 +20,7 @@ from torch import nn
 import torch.nn.functional as F
 
 import numpy as np
+from einops import rearrange
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils import is_torch_version, logging
@@ -276,6 +277,8 @@ class CogVideoXBlock(nn.Module):
         encoder_hidden_states: torch.Tensor,
         temb: torch.Tensor,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
+        video_flow_feature: Optional[torch.Tensor] = None,
+        fuser=None,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
 
@@ -283,6 +286,28 @@ class CogVideoXBlock(nn.Module):
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
         )
+
+        # Motion-guidance Fuser
+        if video_flow_feature is not None:
+            #print(video_flow_feature)
+            #print("hidden_states.shape", hidden_states.shape)
+            #print("tora_trajectory.shape", video_flow_feature.shape)
+
+            H, W = video_flow_feature.shape[-2:]
+            T = norm_hidden_states.shape[1] // H // W
+            
+            h = rearrange(norm_hidden_states, "B (T H W) C -> (B T) C H W", H=H, W=W).to(torch.float16)
+            #print("h.dtype", h.dtype)
+        
+            #video_flow_feature = video_flow_feature.to(h)
+            #print("video_flow_feature.dtype", video_flow_feature.dtype)
+            
+            h = fuser(h, video_flow_feature.to(h), T=T)
+            # if torch.any(torch.isnan(h)):
+            #     #print("hidden_states", h)
+            #     raise ValueError("hidden_states has NaN values")
+            norm_hidden_states = rearrange(h, "(B T) C H W ->  B (T H W) C", T=T)
+            del h, fuser
 
         # attention
         attn_hidden_states, attn_encoder_hidden_states = self.attn1(
@@ -458,6 +483,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
         self.gradient_checkpointing = False
 
+        self.fuser_list = None
+
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
 
@@ -570,6 +597,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         controlnet_states: torch.Tensor = None,
         controlnet_weights: Optional[Union[float, int, list, np.ndarray, torch.FloatTensor]] = 1.0,
+        video_flow_features: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
@@ -594,30 +622,15 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
 
         # 3. Transformer blocks
         for i, block in enumerate(self.transformer_blocks):
-            if self.training and self.gradient_checkpointing:
-
-                def create_custom_forward(module):
-                    def custom_forward(*inputs):
-                        return module(*inputs)
-
-                    return custom_forward
-
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states, encoder_hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    encoder_hidden_states,
-                    emb,
-                    image_rotary_emb,
-                    **ckpt_kwargs,
-                )
-            else:
-                hidden_states, encoder_hidden_states = block(
-                    hidden_states=hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    temb=emb,
-                    image_rotary_emb=image_rotary_emb,
-                )
+            
+            hidden_states, encoder_hidden_states = block(
+                hidden_states=hidden_states,
+                encoder_hidden_states=encoder_hidden_states,
+                temb=emb,
+                image_rotary_emb=image_rotary_emb,
+                video_flow_feature=video_flow_features[i] if video_flow_features is not None else None,
+                fuser = self.fuser_list[i] if self.fuser_list is not None else None,
+            )
 
             if (controlnet_states is not None) and (i < len(controlnet_states)):
                 controlnet_states_block = controlnet_states[i]
