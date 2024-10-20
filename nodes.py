@@ -1030,8 +1030,8 @@ class ToraEncodeTrajectory:
             },
         }
 
-    RETURN_TYPES = ("TORAFEATURES",)
-    RETURN_NAMES = ("tora_trajectory",)
+    RETURN_TYPES = ("TORAFEATURES", )
+    RETURN_NAMES = ("tora_trajectory", )
     FUNCTION = "encode"
     CATEGORY = "CogVideoWrapper"
 
@@ -1044,7 +1044,7 @@ class ToraEncodeTrajectory:
         vae = pipeline["pipe"].vae
         vae.enable_slicing()
 
-        canvas_width, canvas_height = 256, 256
+        canvas_width, canvas_height = width, height
         coordinates = json.loads(coordinates.replace("'", '"'))
         coordinates = [(coord['x'], coord['y']) for coord in coordinates]
         
@@ -1081,7 +1081,7 @@ class ToraEncodeTrajectory:
         video_flow_features = traj_extractor(video_flow.to(torch.float32))
         video_flow_features = torch.stack(video_flow_features)
 
-        return (video_flow_features, )   
+        return (video_flow_features,)   
         
 
 
