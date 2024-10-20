@@ -982,6 +982,9 @@ class CogVideoImageInterpolationEncode:
             vae.to(offload_device)
         
         return ({"samples": final_latents}, )
+    
+from .tora.traj_utils import process_traj, scale_traj_list_to_256
+from torchvision.utils import flow_to_image
 
 class ToraEncodeTrajectory:
     @classmethod
