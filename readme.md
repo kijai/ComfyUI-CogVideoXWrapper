@@ -1,4 +1,19 @@
 # WORK IN PROGRESS
+## Update6
+
+Initial support for Tora (https://github.com/alibaba/Tora)
+
+Converted model (included in the autodownload node):
+
+https://huggingface.co/Kijai/CogVideoX-5b-Tora/tree/main
+
+
+https://github.com/user-attachments/assets/d5334237-03dc-48f5-8bec-3ae5998660c6
+
+
+
+
+
 ## Update5
 This week there's been some bigger updates that will most likely affect some old workflows, sampler node especially probably need to be refreshed (re-created) if it errors out!
 
