@@ -1,0 +1,1324 @@
+{
+  "last_node_id": 75,
+  "last_link_id": 176,
+  "nodes": [
+    {
+      "id": 20,
+      "type": "CLIPLoader",
+      "pos": {
+        "0": -26,
+        "1": 400
+      },
+      "size": {
+        "0": 451.30548095703125,
+        "1": 82
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            54,
+            56
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "t5\\google_t5-v1_1-xxl_encoderonly-fp8_e4m3fn.safetensors",
+        "sd3"
+      ]
+    },
+    {
+      "id": 31,
+      "type": "CogVideoTextEncode",
+      "pos": {
+        "0": 497,
+        "1": 520
+      },
+      "size": {
+        "0": 463.01251220703125,
+        "1": 124
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 56
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            123
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoTextEncode"
+      },
+      "widgets_values": [
+        "The video is not of a high quality, it has a low resolution. Watermark present in each frame. Strange motion trajectory. ",
+        1,
+        true
+      ]
+    },
+    {
+      "id": 65,
+      "type": "CreateShapeImageOnPath",
+      "pos": {
+        "0": 1052,
+        "1": 935
+      },
+      "size": {
+        "0": 313.4619445800781,
+        "1": 270
+      },
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "coordinates",
+          "type": "STRING",
+          "link": 145,
+          "widget": {
+            "name": "coordinates"
+          }
+        },
+        {
+          "name": "size_multiplier",
+          "type": "FLOAT",
+          "link": null,
+          "widget": {
+            "name": "size_multiplier"
+          },
+          "shape": 7
+        },
+        {
+          "name": "frame_width",
+          "type": "INT",
+          "link": 149,
+          "widget": {
+            "name": "frame_width"
+          }
+        },
+        {
+          "name": "frame_height",
+          "type": "INT",
+          "link": 150,
+          "widget": {
+            "name": "frame_height"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            142,
+            153
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            154
+          ],
+          "slot_index": 1
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CreateShapeImageOnPath"
+      },
+      "widgets_values": [
+        "circle",
+        "",
+        512,
+        512,
+        12,
+        12,
+        "red",
+        "black",
+        0,
+        1,
+        [
+          1
+        ]
+      ]
+    },
+    {
+      "id": 66,
+      "type": "VHS_VideoCombine",
+      "pos": {
+        "0": 1405,
+        "1": 916
+      },
+      "size": [
+        605.3909912109375,
+        714.2606608072917
+      ],
+      "flags": {},
+      "order": 11,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 142
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 8,
+        "loop_count": 0,
+        "filename_prefix": "CogVideoX-Tora-trajectory",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "CogVideoX-Tora-trajectory_00011.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 8
+          },
+          "muted": false
+        }
+      }
+    },
+    {
+      "id": 56,
+      "type": "CogVideoDecode",
+      "pos": {
+        "0": 1596,
+        "1": 150
+      },
+      "size": {
+        "0": 300.396484375,
+        "1": 198
+      },
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 128
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 127
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            155
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoDecode"
+      },
+      "widgets_values": [
+        false,
+        240,
+        360,
+        0.2,
+        0.2,
+        true
+      ]
+    },
+    {
+      "id": 57,
+      "type": "CogVideoSampler",
+      "pos": {
+        "0": 1138,
+        "1": 150
+      },
+      "size": {
+        "0": 399.8780822753906,
+        "1": 390
+      },
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 121
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 122
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 123
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "image_cond_latents",
+          "type": "LATENT",
+          "link": 162,
+          "shape": 7
+        },
+        {
+          "name": "context_options",
+          "type": "COGCONTEXT",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "controlnet",
+          "type": "COGVIDECONTROLNET",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "tora_trajectory",
+          "type": "TORAFEATURES",
+          "link": 173,
+          "shape": 7
+        },
+        {
+          "name": "num_frames",
+          "type": "INT",
+          "link": 157,
+          "widget": {
+            "name": "num_frames"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 151,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 152,
+          "widget": {
+            "name": "width"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            128
+          ],
+          "slot_index": 0,
+          "shape": 3
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            127
+          ],
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoSampler"
+      },
+      "widgets_values": [
+        480,
+        720,
+        49,
+        32,
+        6,
+        65334758276105,
+        "fixed",
+        "CogVideoXDPMScheduler",
+        1
+      ]
+    },
+    {
+      "id": 71,
+      "type": "CogVideoImageEncode",
+      "pos": {
+        "0": 68.59265899658203,
+        "1": 573.0311889648438
+      },
+      "size": {
+        "0": 315,
+        "1": 122
+      },
+      "flags": {},
+      "order": 12,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 164
+        },
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 167
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            162
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoImageEncode"
+      },
+      "widgets_values": [
+        16,
+        false
+      ]
+    },
+    {
+      "id": 67,
+      "type": "GetMaskSizeAndCount",
+      "pos": {
+        "0": 763,
+        "1": 772
+      },
+      "size": {
+        "0": 264.5999755859375,
+        "1": 86
+      },
+      "flags": {
+        "collapsed": true
+      },
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 146
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            149,
+            152,
+            168,
+            171
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            150,
+            151,
+            169,
+            172
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "count",
+          "type": "INT",
+          "links": [
+            157,
+            170
+          ],
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetMaskSizeAndCount"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 72,
+      "type": "LoadImage",
+      "pos": {
+        "0": -820,
+        "1": 531
+      },
+      "size": {
+        "0": 315,
+        "1": 314
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            166
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "sd3stag.png",
+        "image"
+      ]
+    },
+    {
+      "id": 73,
+      "type": "ImageResizeKJ",
+      "pos": {
+        "0": -436,
+        "1": 527
+      },
+      "size": {
+        "0": 315,
+        "1": 266
+      },
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "link": 166
+        },
+        {
+          "name": "get_image_size",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "width_input",
+          "type": "INT",
+          "link": 168,
+          "widget": {
+            "name": "width_input"
+          },
+          "shape": 7
+        },
+        {
+          "name": "height_input",
+          "type": "INT",
+          "link": 169,
+          "widget": {
+            "name": "height_input"
+          },
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            167
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageResizeKJ"
+      },
+      "widgets_values": [
+        512,
+        512,
+        "nearest-exact",
+        false,
+        2,
+        0,
+        0,
+        "disabled"
+      ]
+    },
+    {
+      "id": 68,
+      "type": "ImageCompositeMasked",
+      "pos": {
+        "0": 1674,
+        "1": 641
+      },
+      "size": {
+        "0": 315,
+        "1": 146
+      },
+      "flags": {},
+      "order": 15,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "destination",
+          "type": "IMAGE",
+          "link": 155
+        },
+        {
+          "name": "source",
+          "type": "IMAGE",
+          "link": 153
+        },
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 154,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            156
+          ],
+          "slot_index": 0
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ImageCompositeMasked"
+      },
+      "widgets_values": [
+        0,
+        0,
+        false
+      ]
+    },
+    {
+      "id": 60,
+      "type": "SplineEditor",
+      "pos": {
+        "0": -103,
+        "1": 770
+      },
+      "size": {
+        "0": 765,
+        "1": 910
+      },
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": [
+            146
+          ],
+          "slot_index": 0
+        },
+        {
+          "name": "coord_str",
+          "type": "STRING",
+          "links": [
+            145,
+            176
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "float",
+          "type": "FLOAT",
+          "links": null
+        },
+        {
+          "name": "count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "normalized_str",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "SplineEditor",
+        "points": "SplineEditor"
+      },
+      "widgets_values": [
+        "[{\"x\":366.43744764656,\"y\":171.3214040944956},{\"x\":466.3749333683491,\"y\":177.6666412831806},{\"x\":539.3451610382268,\"y\":195.1160435520644},{\"x\":276.01781770779843,\"y\":199.87497144357818}]",
+        "[{\"x\":366.43743896484375,\"y\":171.3214111328125},{\"x\":373.86798095703125,\"y\":171.79318237304688},{\"x\":381.29852294921875,\"y\":172.26495361328125},{\"x\":388.7288818359375,\"y\":172.73956298828125},{\"x\":396.1580810546875,\"y\":173.23184204101562},{\"x\":403.58544921875,\"y\":173.7510223388672},{\"x\":411.0102233886719,\"y\":174.30575561523438},{\"x\":418.4319763183594,\"y\":174.8998260498047},{\"x\":425.85003662109375,\"y\":175.53823852539062},{\"x\":433.26348876953125,\"y\":176.2280731201172},{\"x\":440.67156982421875,\"y\":176.9736328125},{\"x\":448.0726623535156,\"y\":177.78512573242188},{\"x\":455.4649658203125,\"y\":178.67330932617188},{\"x\":462.8458557128906,\"y\":179.65150451660156},{\"x\":470.2113952636719,\"y\":180.73902893066406},{\"x\":477.5547180175781,\"y\":181.96739196777344},{\"x\":484.8601379394531,\"y\":183.40267944335938},{\"x\":492.0770568847656,\"y\":185.22531127929688},{\"x\":498.24371337890625,\"y\":188.81117248535156},{\"x\":491.68231201171875,\"y\":191.73179626464844},{\"x\":484.3272705078125,\"y\":192.8770294189453},{\"x\":476.9224853515625,\"y\":193.65155029296875},{\"x\":469.50146484375,\"y\":194.25323486328125},{\"x\":462.07281494140625,\"y\":194.7535400390625},{\"x\":454.6398620605469,\"y\":195.1853790283203},{\"x\":447.2041931152344,\"y\":195.56698608398438},{\"x\":439.7665710449219,\"y\":195.90963745117188},{\"x\":432.32757568359375,\"y\":196.2206573486328},{\"x\":424.8875427246094,\"y\":196.50531005859375},{\"x\":417.4466552734375,\"y\":196.76824951171875},{\"x\":410.0051574707031,\"y\":197.01141357421875},{\"x\":402.5631103515625,\"y\":197.23898315429688},{\"x\":395.1206970214844,\"y\":197.45263671875},{\"x\":387.6778869628906,\"y\":197.6529541015625},{\"x\":380.23480224609375,\"y\":197.8413848876953},{\"x\":372.7914123535156,\"y\":198.0200653076172},{\"x\":365.3478698730469,\"y\":198.19000244140625},{\"x\":357.90411376953125,\"y\":198.350341796875},{\"x\":350.4601745605469,\"y\":198.50411987304688},{\"x\":343.01611328125,\"y\":198.65133666992188},{\"x\":335.5719909667969,\"y\":198.79347229003906},{\"x\":328.12774658203125,\"y\":198.93048095703125},{\"x\":320.68353271484375,\"y\":199.0675048828125},{\"x\":313.2392578125,\"y\":199.20228576660156},{\"x\":305.79498291015625,\"y\":199.33682250976562},{\"x\":298.35064697265625,\"y\":199.4713592529297},{\"x\":290.9063720703125,\"y\":199.60589599609375},{\"x\":283.46209716796875,\"y\":199.7404327392578},{\"x\":276.017822265625,\"y\":199.87496948242188}]",
+        720,
+        480,
+        49,
+        "path",
+        "basis",
+        0.5,
+        1,
+        "list",
+        0,
+        1,
+        null,
+        null
+      ]
+    },
+    {
+      "id": 30,
+      "type": "CogVideoTextEncode",
+      "pos": {
+        "0": 493,
+        "1": 303
+      },
+      "size": {
+        "0": 471.90142822265625,
+        "1": 168.08047485351562
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 54
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            122
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoTextEncode"
+      },
+      "widgets_values": [
+        "a stag is standing and looking around in a forest",
+        1,
+        true
+      ]
+    },
+    {
+      "id": 44,
+      "type": "VHS_VideoCombine",
+      "pos": {
+        "0": 2210,
+        "1": 151
+      },
+      "size": [
+        1131.619140625,
+        1065.0794270833335
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 156
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine"
+      },
+      "widgets_values": {
+        "frame_rate": 16,
+        "loop_count": 0,
+        "filename_prefix": "CogVideoX-Tora",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "CogVideoX-Tora_00012.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 16
+          },
+          "muted": false
+        }
+      }
+    },
+    {
+      "id": 75,
+      "type": "DownloadAndLoadToraModel",
+      "pos": {
+        "0": 253,
+        "1": 146
+      },
+      "size": {
+        "0": 315,
+        "1": 58
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "tora_model",
+          "type": "TORAMODEL",
+          "links": [
+            175
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadToraModel"
+      },
+      "widgets_values": [
+        "kijai/CogVideoX-5b-Tora"
+      ]
+    },
+    {
+      "id": 74,
+      "type": "ToraEncodeTrajectory",
+      "pos": {
+        "0": 1060,
+        "1": 670
+      },
+      "size": [
+        335.1993359916705,
+        206
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 174
+        },
+        {
+          "name": "tora_model",
+          "type": "TORAMODEL",
+          "link": 175
+        },
+        {
+          "name": "coordinates",
+          "type": "STRING",
+          "link": 176,
+          "widget": {
+            "name": "coordinates"
+          }
+        },
+        {
+          "name": "num_frames",
+          "type": "INT",
+          "link": 170,
+          "widget": {
+            "name": "num_frames"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 171,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 172,
+          "widget": {
+            "name": "height"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "tora_trajectory",
+          "type": "TORAFEATURES",
+          "links": [
+            173
+          ]
+        },
+        {
+          "name": "video_flow_images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ToraEncodeTrajectory"
+      },
+      "widgets_values": [
+        "",
+        720,
+        480,
+        49,
+        1,
+        0,
+        0.1
+      ]
+    },
+    {
+      "id": 1,
+      "type": "DownloadAndLoadCogVideoModel",
+      "pos": {
+        "0": 633,
+        "1": 44
+      },
+      "size": {
+        "0": 337.8885192871094,
+        "1": 194
+      },
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pab_config",
+          "type": "PAB_CONFIG",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "block_edit",
+          "type": "TRANSFORMERBLOCKS",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "lora",
+          "type": "COGLORA",
+          "link": null,
+          "shape": 7
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            121,
+            164,
+            174
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadCogVideoModel"
+      },
+      "widgets_values": [
+        "THUDM/CogVideoX-5b-I2V",
+        "bf16",
+        "disabled",
+        "disabled",
+        false
+      ]
+    }
+  ],
+  "links": [
+    [
+      54,
+      20,
+      0,
+      30,
+      0,
+      "CLIP"
+    ],
+    [
+      56,
+      20,
+      0,
+      31,
+      0,
+      "CLIP"
+    ],
+    [
+      121,
+      1,
+      0,
+      57,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      122,
+      30,
+      0,
+      57,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      123,
+      31,
+      0,
+      57,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      127,
+      57,
+      1,
+      56,
+      1,
+      "LATENT"
+    ],
+    [
+      128,
+      57,
+      0,
+      56,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      142,
+      65,
+      0,
+      66,
+      0,
+      "IMAGE"
+    ],
+    [
+      145,
+      60,
+      1,
+      65,
+      0,
+      "STRING"
+    ],
+    [
+      146,
+      60,
+      0,
+      67,
+      0,
+      "MASK"
+    ],
+    [
+      149,
+      67,
+      1,
+      65,
+      2,
+      "INT"
+    ],
+    [
+      150,
+      67,
+      2,
+      65,
+      3,
+      "INT"
+    ],
+    [
+      151,
+      67,
+      2,
+      57,
+      9,
+      "INT"
+    ],
+    [
+      152,
+      67,
+      1,
+      57,
+      10,
+      "INT"
+    ],
+    [
+      153,
+      65,
+      0,
+      68,
+      1,
+      "IMAGE"
+    ],
+    [
+      154,
+      65,
+      1,
+      68,
+      2,
+      "MASK"
+    ],
+    [
+      155,
+      56,
+      0,
+      68,
+      0,
+      "IMAGE"
+    ],
+    [
+      156,
+      68,
+      0,
+      44,
+      0,
+      "IMAGE"
+    ],
+    [
+      157,
+      67,
+      3,
+      57,
+      8,
+      "INT"
+    ],
+    [
+      162,
+      71,
+      0,
+      57,
+      4,
+      "LATENT"
+    ],
+    [
+      164,
+      1,
+      0,
+      71,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      166,
+      72,
+      0,
+      73,
+      0,
+      "IMAGE"
+    ],
+    [
+      167,
+      73,
+      0,
+      71,
+      1,
+      "IMAGE"
+    ],
+    [
+      168,
+      67,
+      1,
+      73,
+      2,
+      "INT"
+    ],
+    [
+      169,
+      67,
+      2,
+      73,
+      3,
+      "INT"
+    ],
+    [
+      170,
+      67,
+      3,
+      74,
+      3,
+      "INT"
+    ],
+    [
+      171,
+      67,
+      1,
+      74,
+      4,
+      "INT"
+    ],
+    [
+      172,
+      67,
+      2,
+      74,
+      5,
+      "INT"
+    ],
+    [
+      173,
+      74,
+      0,
+      57,
+      7,
+      "TORAFEATURES"
+    ],
+    [
+      174,
+      1,
+      0,
+      74,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      175,
+      75,
+      0,
+      74,
+      1,
+      "TORAMODEL"
+    ],
+    [
+      176,
+      60,
+      1,
+      74,
+      2,
+      "STRING"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.5730855330117661,
+      "offset": [
+        931.6955110788911,
+        94.46846235728464
+      ]
+    }
+  },
+  "version": 0.4
+}

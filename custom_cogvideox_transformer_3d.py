@@ -23,7 +23,7 @@ import numpy as np
 from einops import rearrange
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.utils import is_torch_version, logging
+from diffusers.utils import logging
 from diffusers.utils.torch_utils import maybe_allow_in_graph
 from diffusers.models.attention import Attention, FeedForward
 from diffusers.models.attention_processor import AttentionProcessor
@@ -37,11 +37,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 try:
     from sageattention import sageattn
-    SAGEATTN_IS_AVAVILABLE = True
+    SAGEATTN_IS_AVAILABLE = True
     logger.info("Using sageattn")
 except:
     logger.info("sageattn not found, using sdpa")
-    SAGEATTN_IS_AVAVILABLE = False
+    SAGEATTN_IS_AVAILABLE = False
 
 class CogVideoXAttnProcessor2_0:
     r"""
@@ -97,7 +97,7 @@ class CogVideoXAttnProcessor2_0:
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
-        if SAGEATTN_IS_AVAVILABLE:
+        if SAGEATTN_IS_AVAILABLE:
             hidden_states = sageattn(query, key, value, is_causal=False)
         else:
             hidden_states = F.scaled_dot_product_attention(
@@ -171,7 +171,7 @@ class FusedCogVideoXAttnProcessor2_0:
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
-        if SAGEATTN_IS_AVAVILABLE:
+        if SAGEATTN_IS_AVAILABLE:
             hidden_states = sageattn(query, key, value, is_causal=False)
         else:
             hidden_states = F.scaled_dot_product_attention(
