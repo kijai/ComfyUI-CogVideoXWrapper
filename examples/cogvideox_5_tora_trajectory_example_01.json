@@ -1,6 +1,6 @@
 {
-  "last_node_id": 68,
-  "last_link_id": 158,
+  "last_node_id": 70,
+  "last_link_id": 165,
   "nodes": [
     {
       "id": 20,
@@ -49,7 +49,7 @@
         "1": 124
       },
       "flags": {},
-      "order": 4,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -118,7 +118,7 @@
           "type": "COGVIDEOPIPE",
           "links": [
             121,
-            132
+            159
           ],
           "slot_index": 0,
           "shape": 3
@@ -147,7 +147,7 @@
         "1": 270
       },
       "flags": {},
-      "order": 6,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -234,7 +234,7 @@
         "1": 198
       },
       "flags": {},
-      "order": 10,
+      "order": 11,
       "mode": 0,
       "inputs": [
         {
@@ -283,7 +283,7 @@
         "1": 146
       },
       "flags": {},
-      "order": 11,
+      "order": 12,
       "mode": 0,
       "inputs": [
         {
@@ -334,7 +334,7 @@
         714.2606608072917
       ],
       "flags": {},
-      "order": 8,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
@@ -386,7 +386,7 @@
           "hidden": false,
           "paused": false,
           "params": {
-            "filename": "CogVideoX-Tora-trajectory_00001.mp4",
+            "filename": "CogVideoX-Tora-trajectory_00012.mp4",
             "subfolder": "",
             "type": "temp",
             "format": "video/h264-mp4",
@@ -408,7 +408,7 @@
         "1": 168.08047485351562
       },
       "flags": {},
-      "order": 3,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -465,8 +465,8 @@
           "name": "coord_str",
           "type": "STRING",
           "links": [
-            134,
-            145
+            145,
+            165
           ],
           "slot_index": 1
         },
@@ -519,7 +519,7 @@
         "1": 390
       },
       "flags": {},
-      "order": 9,
+      "order": 10,
       "mode": 0,
       "inputs": [
         {
@@ -564,7 +564,7 @@
         {
           "name": "tora_trajectory",
           "type": "TORAFEATURES",
-          "link": 133,
+          "link": 163,
           "shape": 7
         },
         {
@@ -640,7 +640,7 @@
       "flags": {
         "collapsed": true
       },
-      "order": 5,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -659,9 +659,9 @@
           "name": "720 width",
           "type": "INT",
           "links": [
-            147,
             149,
-            152
+            152,
+            161
           ],
           "slot_index": 1
         },
@@ -669,9 +669,9 @@
           "name": "480 height",
           "type": "INT",
           "links": [
-            148,
             150,
-            151
+            151,
+            162
           ],
           "slot_index": 2
         },
@@ -680,7 +680,7 @@
           "type": "INT",
           "links": [
             157,
-            158
+            160
           ],
           "slot_index": 3
         }
@@ -691,83 +691,6 @@
       "widgets_values": []
     },
     {
-      "id": 61,
-      "type": "ToraEncodeTrajectory",
-      "pos": {
-        "0": 1057,
-        "1": 746
-      },
-      "size": {
-        "0": 270.3999938964844,
-        "1": 115.14337158203125
-      },
-      "flags": {},
-      "order": 7,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 132
-        },
-        {
-          "name": "coordinates",
-          "type": "STRING",
-          "link": 134,
-          "widget": {
-            "name": "coordinates"
-          }
-        },
-        {
-          "name": "num_frames",
-          "type": "INT",
-          "link": 158,
-          "widget": {
-            "name": "num_frames"
-          }
-        },
-        {
-          "name": "width",
-          "type": "INT",
-          "link": 147,
-          "widget": {
-            "name": "width"
-          }
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "link": 148,
-          "widget": {
-            "name": "height"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "tora_trajectory",
-          "type": "TORAFEATURES",
-          "links": [
-            133
-          ]
-        },
-        {
-          "name": "rescaled_coordinates",
-          "type": "STRING",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "ToraEncodeTrajectory"
-      },
-      "widgets_values": [
-        "",
-        720,
-        480,
-        49
-      ]
-    },
-    {
       "id": 44,
       "type": "VHS_VideoCombine",
       "pos": {
@@ -775,11 +698,11 @@
         "1": 151
       },
       "size": [
-        1131.6191496313018,
-        1065.0794330875347
+        1131.619140625,
+        1065.0794270833335
       ],
       "flags": {},
-      "order": 12,
+      "order": 13,
       "mode": 0,
       "inputs": [
         {
@@ -840,6 +763,122 @@
           "muted": false
         }
       }
+    },
+    {
+      "id": 70,
+      "type": "DownloadAndLoadToraModel",
+      "pos": {
+        "0": 270,
+        "1": 158
+      },
+      "size": {
+        "0": 315,
+        "1": 58
+      },
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "tora_model",
+          "type": "TORAMODEL",
+          "links": [
+            164
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadToraModel"
+      },
+      "widgets_values": [
+        "kijai/CogVideoX-5b-Tora"
+      ]
+    },
+    {
+      "id": 69,
+      "type": "ToraEncodeTrajectory",
+      "pos": {
+        "0": 1112,
+        "1": 663
+      },
+      "size": [
+        355.20001220703125,
+        222
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 159
+        },
+        {
+          "name": "tora_model",
+          "type": "TORAMODEL",
+          "link": 164
+        },
+        {
+          "name": "coordinates",
+          "type": "STRING",
+          "link": 165,
+          "widget": {
+            "name": "coordinates"
+          }
+        },
+        {
+          "name": "num_frames",
+          "type": "INT",
+          "link": 160,
+          "widget": {
+            "name": "num_frames"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 161,
+          "widget": {
+            "name": "width"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 162,
+          "widget": {
+            "name": "height"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "tora_trajectory",
+          "type": "TORAFEATURES",
+          "links": [
+            163
+          ]
+        },
+        {
+          "name": "video_flow_images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "ToraEncodeTrajectory"
+      },
+      "widgets_values": [
+        "",
+        720,
+        480,
+        49,
+        1,
+        0,
+        1
+      ]
     }
   ],
   "links": [
@@ -900,30 +939,6 @@
       "COGVIDEOPIPE"
     ],
     [
-      132,
-      1,
-      0,
-      61,
-      0,
-      "COGVIDEOPIPE"
-    ],
-    [
-      133,
-      61,
-      0,
-      57,
-      7,
-      "TORAFEATURES"
-    ],
-    [
-      134,
-      60,
-      1,
-      61,
-      1,
-      "STRING"
-    ],
-    [
       142,
       65,
       0,
@@ -946,22 +961,6 @@
       67,
       0,
       "MASK"
-    ],
-    [
-      147,
-      67,
-      1,
-      61,
-      3,
-      "INT"
-    ],
-    [
-      148,
-      67,
-      2,
-      61,
-      4,
-      "INT"
     ],
     [
       149,
@@ -1036,22 +1035,70 @@
       "INT"
     ],
     [
-      158,
+      159,
+      1,
+      0,
+      69,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      160,
       67,
       3,
-      61,
-      2,
+      69,
+      3,
       "INT"
+    ],
+    [
+      161,
+      67,
+      1,
+      69,
+      4,
+      "INT"
+    ],
+    [
+      162,
+      67,
+      2,
+      69,
+      5,
+      "INT"
+    ],
+    [
+      163,
+      69,
+      0,
+      57,
+      7,
+      "TORAFEATURES"
+    ],
+    [
+      164,
+      70,
+      0,
+      69,
+      1,
+      "TORAMODEL"
+    ],
+    [
+      165,
+      60,
+      1,
+      69,
+      2,
+      "STRING"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.6303940863129404,
+      "scale": 0.6303940863129383,
       "offset": [
-        311.9877226187315,
-        0.9847260584690027
+        302.46497962544663,
+        77.05651988573555
       ]
     }
   },
