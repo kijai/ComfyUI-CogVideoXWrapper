@@ -476,26 +476,35 @@ def unmerge_lora(pipeline, lora_path, multiplier=1, device="cpu", dtype=torch.fl
 
     return pipeline
 
-def load_lora_into_transformer(state_dict, transformer, adapter_name=None, strength=1.0):
-        from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+def load_lora_into_transformer(lora, transformer):
+        from peft import LoraConfig, set_peft_model_state_dict
+        from peft.mapping import PEFT_TYPE_TO_TUNER_MAPPING
         from peft.tuners.tuners_utils import BaseTunerLayer
-        from diffusers.utils.peft_utils import get_peft_kwargs, get_adapter_name
+        from diffusers.utils.peft_utils import get_peft_kwargs
         from diffusers.utils.import_utils import is_peft_version
         from diffusers.utils.state_dict_utils import convert_unet_state_dict_to_peft
-        keys = list(state_dict.keys())
-        transformer_keys = [k for k in keys if k.startswith("transformer")]
-        state_dict = {
-            k.replace(f"transformer.", ""): v for k, v in state_dict.items() if k in transformer_keys
-        }
-        if len(state_dict.keys()) > 0:
+
+        state_dict_list = []
+        adapter_name_list = []
+        strength_list = []
+        lora_config_list = []
+
+        for l in lora:
+            state_dict = load_file(l["path"])
+            adapter_name_list.append(l["name"])
+            strength_list.append(l["strength"])
+
+            keys = list(state_dict.keys())
+            transformer_keys = [k for k in keys if k.startswith("transformer")]
+            state_dict = {
+                k.replace(f"transformer.", ""): v for k, v in state_dict.items() if k in transformer_keys
+            }
+            
             # check with first key if is not in peft format
             first_key = next(iter(state_dict.keys()))
             if "lora_A" not in first_key:
                 state_dict = convert_unet_state_dict_to_peft(state_dict)
-            if adapter_name in getattr(transformer, "peft_config", {}):
-                raise ValueError(
-                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
-                )
+            
             rank = {}
             for key, val in state_dict.items():
                 if "lora_B" in key:
@@ -508,13 +517,18 @@ def load_lora_into_transformer(state_dict, transformer, adapter_name=None, stren
                     )
                 else:
                     lora_config_kwargs.pop("use_dora")
-            lora_config = LoraConfig(**lora_config_kwargs)
-            # adapter_name
-            if adapter_name is None:
-                adapter_name = get_adapter_name(transformer)
-           
-            transformer = inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
-            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name)
+
+            lora_config_list.append(LoraConfig(**lora_config_kwargs))
+            state_dict_list.append(state_dict)
+
+
+        peft_models = []
+
+        for i in range(len(lora_config_list)):
+            tuner_cls = PEFT_TYPE_TO_TUNER_MAPPING[lora_config_list[i].peft_type]
+            peft_model = tuner_cls(transformer, lora_config_list[i], adapter_name=adapter_name_list[i])
+            incompatible_keys = set_peft_model_state_dict(peft_model.model, state_dict_list[i], adapter_name_list[i])
+            
             if incompatible_keys is not None:
                 # check only for unexpected keys
                 unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
@@ -523,10 +537,21 @@ def load_lora_into_transformer(state_dict, transformer, adapter_name=None, stren
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                         f" {unexpected_keys}. "
                     )
+            
+            peft_models.append(peft_model)
 
-            if strength != 1.0:
+        if len(peft_models) > 1:
+            peft_models[0].add_weighted_adapter(
+                adapters=adapter_name_list,
+                weights=strength_list,
+                combination_type="linear",
+                adapter_name="combined_adapter"
+            )
+            peft_models[0].set_adapter("combined_adapter")
+        else:
+            if strength_list[0] != 1.0:
                 for module in transformer.modules():
                     if isinstance(module, BaseTunerLayer):
                         #print(f"Setting strength for {module}")
-                        module.scale_layer(strength)
-        return transformer
+                        module.scale_layer(strength_list[0])
+        return peft_model.model

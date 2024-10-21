@@ -224,6 +224,9 @@ class CogVideoLoraSelect:
                 {"tooltip": "LORA models are expected to be in ComfyUI/models/CogVideo/loras with .safetensors extension"}),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
             },
+            "optional": {
+                "prev_lora":("COGLORA", {"default": None, "tooltip": "For loading multiple LoRAs"}),
+            }
         }
 
     RETURN_TYPES = ("COGLORA",)
@@ -231,15 +234,20 @@ class CogVideoLoraSelect:
     FUNCTION = "getlorapath"
     CATEGORY = "CogVideoWrapper"
 
-    def getlorapath(self, lora, strength):
+    def getlorapath(self, lora, strength, prev_lora=None):
+        cog_loras_list = []
 
         cog_lora = {
             "path": folder_paths.get_full_path("cogvideox_loras", lora),
             "strength": strength,
             "name": lora.split(".")[0],
         }
-
-        return (cog_lora,)
+        if prev_lora is not None:
+            cog_loras_list.extend(prev_lora)
+            
+        cog_loras_list.append(cog_lora)
+        print(cog_loras_list)
+        return (cog_loras_list,)
     
 class DownloadAndLoadCogVideoModel:
     @classmethod
@@ -268,7 +276,7 @@ class DownloadAndLoadCogVideoModel:
                 "precision": (["fp16", "fp32", "bf16"],
                     {"default": "bf16", "tooltip": "official recommendation is that 2b model should be fp16, 5b model should be bf16"}
                 ),
-                "fp8_transformer": (['disabled', 'enabled', 'fastmode'], {"default": 'disabled', "tooltip": "enabled casts the transformer to torch.float8_e4m3fn, fastmode is only for latest nvidia GPUs"}),
+                "fp8_transformer": (['disabled', 'enabled', 'fastmode'], {"default": 'disabled', "tooltip": "enabled casts the transformer to torch.float8_e4m3fn, fastmode is only for latest nvidia GPUs and requires torch 2.4.0 and cu124 minimum"}),
                 "compile": (["disabled","onediff","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
                 "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
                 "pab_config": ("PAB_CONFIG", {"default": None}),
@@ -281,6 +289,7 @@ class DownloadAndLoadCogVideoModel:
     RETURN_NAMES = ("cogvideo_pipe", )
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "Downloads and loads the selected CogVideo model from Huggingface to 'ComfyUI/models/CogVideo'"
 
     def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None):
         
@@ -353,14 +362,15 @@ class DownloadAndLoadCogVideoModel:
 
         #LoRAs
         if lora is not None:
-            from .cogvideox_fun.lora_utils import merge_lora, load_lora_into_transformer
-            logging.info(f"Merging LoRA weights from {lora['path']} with strength {lora['strength']}")
+            from .lora_utils import merge_lora, load_lora_into_transformer
             if "fun" in model.lower():
-                transformer = merge_lora(transformer, lora["path"], lora["strength"])
+                for l in lora:
+                    logging.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
+                    transformer = merge_lora(transformer, l["path"], l["strength"])
             else:
-                lora_sd = load_torch_file(lora["path"])
-                transformer = load_lora_into_transformer(state_dict=lora_sd, transformer=transformer, adapter_name=lora["name"], strength=lora["strength"])
-
+                transformer = load_lora_into_transformer(lora, transformer)
+                        
+                
         if block_edit is not None:
             transformer = remove_specific_blocks(transformer, block_edit)
         
@@ -472,7 +482,7 @@ class DownloadAndLoadCogVideoGGUFModel:
                     ],
                 ),
             "vae_precision": (["fp16", "fp32", "bf16"], {"default": "bf16", "tooltip": "VAE dtype"}),
-            "fp8_fastmode": ("BOOLEAN", {"default": False, "tooltip": "only supported on 4090 and later GPUs"}),
+            "fp8_fastmode": ("BOOLEAN", {"default": False, "tooltip": "only supported on 4090 and later GPUs, also requires torch 2.4.0 with cu124 minimum"}),
             "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
             "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
             },

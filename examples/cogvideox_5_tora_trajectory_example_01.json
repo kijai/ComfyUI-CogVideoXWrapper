@@ -130,7 +130,7 @@
       "widgets_values": [
         "kijai/CogVideoX-5b-Tora",
         "bf16",
-        "fastmode",
+        "disabled",
         "disabled",
         false
       ]
