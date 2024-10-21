@@ -513,14 +513,10 @@ class CogVideoXPipeline(VideoSysPipeline):
                 height // self.vae_scale_factor_spatial,
                 width // self.vae_scale_factor_spatial,
                 )
-                print("padding_shape: ", padding_shape)
                 latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae.dtype)
-                print(image_cond_latents.shape)
-                print(image_cond_latents[:, 0, :, :, :].shape)
-                print(image_cond_latents[:, -1, :, :, :].shape)
 
                 image_cond_latents = torch.cat([image_cond_latents[:, 0, :, :, :].unsqueeze(1), latent_padding, image_cond_latents[:, -1, :, :, :].unsqueeze(1)], dim=1)
-                print("image cond latents shape",image_cond_latents.shape)
+                logger.info("image cond latents shape: ",image_cond_latents.shape)
             else:
                 logger.info("Only one image conditioning frame received, img2vid")
                 padding_shape = (
@@ -546,15 +542,15 @@ class CogVideoXPipeline(VideoSysPipeline):
         # masks
         if self.original_mask is not None:
             mask = self.original_mask.to(device)
-            print("self.original_mask: ", self.original_mask.shape)
+            logger.info("self.original_mask: ", self.original_mask.shape)
             
             mask = F.interpolate(self.original_mask.unsqueeze(1), size=(latents.shape[-2], latents.shape[-1]), mode='bilinear', align_corners=False)
             if mask.shape[0] != latents.shape[1]:
                 mask = mask.unsqueeze(1).repeat(1, latents.shape[1], 16, 1, 1)
             else:
                 mask = mask.unsqueeze(0).repeat(1, 1, 16, 1, 1)
-            print("latents: ", latents.shape)
-            print("mask: ", mask.shape)
+            logger.info(f"latents: {latents.shape}")
+            logger.info(f"mask: {mask.shape}")
 
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -566,11 +562,11 @@ class CogVideoXPipeline(VideoSysPipeline):
             t_tile_overlap = context_overlap
             t_tile_weights = self._gaussian_weights(t_tile_length=t_tile_length, t_batch_size=1).to(latents.device).to(self.vae.dtype)
             use_temporal_tiling = True
-            print("Temporal tiling enabled")
+            logger.info("Temporal tiling enabled")
         elif context_schedule is not None:
             if image_cond_latents is not None:
                 raise NotImplementedError("Context schedule not currently supported with image conditioning")
-            print(f"Context schedule enabled: {context_frames} frames, {context_stride} stride, {context_overlap} overlap")
+            logger.info(f"Context schedule enabled: {context_frames} frames, {context_stride} stride, {context_overlap} overlap")
             use_temporal_tiling = False
             use_context_schedule = True
             from .cogvideox_fun.context import get_context_scheduler
@@ -579,15 +575,17 @@ class CogVideoXPipeline(VideoSysPipeline):
         else:
             use_temporal_tiling = False
             use_context_schedule = False
-            print("Temporal tiling and context schedule disabled")
+            logger.info("Temporal tiling and context schedule disabled")
             # 7. Create rotary embeds if required
             image_rotary_emb = (
                 self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device)
                 if self.transformer.config.use_rotary_positional_embeddings
                 else None
             )
-        # 9. Controlnet
+            if video_flow_features is not None and do_classifier_free_guidance:
+                video_flow_features = video_flow_features.repeat(1, 2, 1, 1, 1).contiguous()
 
+        # 9. Controlnet
         if controlnet is not None:
             self.controlnet = controlnet["control_model"].to(device)
             if self.transformer.dtype == torch.float8_e4m3fn:
@@ -606,7 +604,7 @@ class CogVideoXPipeline(VideoSysPipeline):
             control_frames = controlnet["control_frames"].to(device).to(self.controlnet.dtype).contiguous()
             control_frames = torch.cat([control_frames] * 2) if do_classifier_free_guidance else control_frames
             control_weights = controlnet["control_weights"]
-            print("Controlnet enabled with weights: ", control_weights)
+            logger.info(f"Controlnet enabled with weights: {control_weights}")
             control_start = controlnet["control_start"]
             control_end = controlnet["control_end"]
         else:
@@ -786,6 +784,13 @@ class CogVideoXPipeline(VideoSysPipeline):
                     else:
                         for c in context_queue:
                             partial_latent_model_input = latent_model_input[:, c, :, :, :]
+                            if video_flow_features is not None:
+                                if do_classifier_free_guidance:
+                                    partial_video_flow_features = video_flow_features[:, c, :, :, :].repeat(1, 2, 1, 1, 1).contiguous()
+                                else:
+                                    partial_video_flow_features = video_flow_features[:, c, :, :, :]
+                            else:
+                                partial_video_flow_features = None
     
                             # predict noise model_output
                             noise_pred[:, c, :, :, :] += self.transformer(
@@ -793,6 +798,7 @@ class CogVideoXPipeline(VideoSysPipeline):
                                 encoder_hidden_states=prompt_embeds,
                                 timestep=timestep,
                                 image_rotary_emb=image_rotary_emb,
+                                video_flow_features=partial_video_flow_features,
                                 return_dict=False
                             )[0]
 

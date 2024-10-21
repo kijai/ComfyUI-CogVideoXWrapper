@@ -287,25 +287,13 @@ class CogVideoXBlock(nn.Module):
             hidden_states, encoder_hidden_states, temb
         )
 
-        # Motion-guidance Fuser
+        # Tora Motion-guidance Fuser
         if video_flow_feature is not None:
-            #print(video_flow_feature)
-            #print("hidden_states.shape", hidden_states.shape)
-            #print("tora_trajectory.shape", video_flow_feature.shape)
-
             H, W = video_flow_feature.shape[-2:]
             T = norm_hidden_states.shape[1] // H // W
             
             h = rearrange(norm_hidden_states, "B (T H W) C -> (B T) C H W", H=H, W=W).to(torch.float16)
-            #print("h.dtype", h.dtype)
-        
-            #video_flow_feature = video_flow_feature.to(h)
-            #print("video_flow_feature.dtype", video_flow_feature.dtype)
-            
             h = fuser(h, video_flow_feature.to(h), T=T)
-            # if torch.any(torch.isnan(h)):
-            #     #print("hidden_states", h)
-            #     raise ValueError("hidden_states has NaN values")
             norm_hidden_states = rearrange(h, "(B T) C H W ->  B (T H W) C", T=T)
             del h, fuser
 

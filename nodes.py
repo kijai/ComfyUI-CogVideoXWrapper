@@ -421,7 +421,7 @@ class DownloadAndLoadCogVideoModel:
             pipe.transformer.fuser_list.load_state_dict(fuser_sd)
             for module in transformer.fuser_list:
                 for param in module.parameters():
-                    param.data = param.data.to(torch.float16).to(device)
+                    param.data = param.data.to(torch.float16)
             del fuser_sd
 
             from .tora.traj_module import TrajExtractor
@@ -1004,6 +1004,7 @@ class ToraEncodeTrajectory:
     CATEGORY = "CogVideoWrapper"
 
     def encode(self, pipeline, width, height, num_frames, coordinates):
+        check_diffusers_version()
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         generator = torch.Generator(device=device).manual_seed(0)
@@ -1011,43 +1012,33 @@ class ToraEncodeTrajectory:
         traj_extractor = pipeline["pipe"].traj_extractor
         vae = pipeline["pipe"].vae
         vae.enable_slicing()
+        vae._clear_fake_context_parallel_cache()
 
-        canvas_width, canvas_height = width, height
+        #get coordinates from string and convert to compatible range/format (has to be 256x256 for the model)
         coordinates = json.loads(coordinates.replace("'", '"'))
         coordinates = [(coord['x'], coord['y']) for coord in coordinates]
-        
-        traj_list_range_256 = scale_traj_list_to_256(coordinates, canvas_width, canvas_height)
+        traj_list_range_256 = scale_traj_list_to_256(coordinates, width, height)
 
-        check_diffusers_version()
-        vae._clear_fake_context_parallel_cache()
-        
-        total_num_frames = num_frames
+        video_flow, points = process_traj(traj_list_range_256, num_frames, (height,width), device=device)
+        video_flow = rearrange(video_flow, "T H W C -> T C H W")
+        video_flow = flow_to_image(video_flow).unsqueeze_(0).to(device)  # [1 T C H W]
 
-        video_flow, points = process_traj(traj_list_range_256, total_num_frames, (height,width), device=device)
-        video_flow = video_flow.unsqueeze_(0)
-       
-        tmp = rearrange(video_flow[0], "T H W C -> T C H W")
-        video_flow = flow_to_image(tmp).unsqueeze_(0).to("cuda")  # [1 T C H W]
-
-        del tmp
         video_flow = (
-            rearrange(video_flow / 255.0 * 2 - 1, "B T C H W -> B C T H W").contiguous().to(torch.bfloat16)
+            rearrange(video_flow / 255.0 * 2 - 1, "B T C H W -> B C T H W").contiguous().to(vae.dtype)
         )
-        torch.cuda.empty_cache()
-        video_flow = video_flow.repeat(2, 1, 1, 1, 1).contiguous()  # for uncondition
+        mm.soft_empty_cache()
 
+        # VAE encode
         if not pipeline["cpu_offloading"]:
             vae.to(device)
-            
-        video_flow = vae.encode(video_flow).latent_dist.sample(generator) * vae.config.scaling_factor
-        video_flow = video_flow.permute(0, 2, 1, 3, 4).contiguous()
-        print("video_flow shape", video_flow.shape)
 
+        video_flow = vae.encode(video_flow).latent_dist.sample(generator) * vae.config.scaling_factor
         vae.to(offload_device)
 
-        video_flow = rearrange(video_flow, "b t d h w -> b d t h w")
         video_flow_features = traj_extractor(video_flow.to(torch.float32))
         video_flow_features = torch.stack(video_flow_features)
+
+        logging.info(f"video_flow shape: {video_flow.shape}")
 
         return (video_flow_features,)   
         
@@ -1293,7 +1284,7 @@ class CogVideoXFunSampler:
         else:
             context_frames, context_stride, context_overlap = None, None, None
 
-        generator= torch.Generator(device="cpu").manual_seed(seed)
+        generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
         autocastcondition = not pipeline["onediff"]
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
@@ -1388,7 +1379,7 @@ class CogVideoXFunVid2VidSampler:
         else:
             raise ValueError(f"Unknown scheduler: {scheduler}")
 
-        generator= torch.Generator(device).manual_seed(seed)
+        generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
         autocastcondition = not pipeline["onediff"]
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
@@ -1635,7 +1626,7 @@ class CogVideoXFunControlSampler:
         else:
             raise ValueError(f"Unknown scheduler: {scheduler}")
 
-        generator=torch.Generator(torch.device("cpu")).manual_seed(seed)
+        generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
         autocastcondition = not pipeline["onediff"]
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
