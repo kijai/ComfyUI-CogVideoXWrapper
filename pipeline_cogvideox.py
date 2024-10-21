@@ -382,7 +382,6 @@ class CogVideoXPipeline(VideoSysPipeline):
         prompt_embeds: Optional[torch.Tensor] = None,
         negative_prompt_embeds: Optional[torch.Tensor] = None,
         device = torch.device("cuda"),
-        scheduler_name: str = "DPM",
         context_schedule: Optional[str] = None,
         context_frames: Optional[int] = None,
         context_stride: Optional[int] = None,
@@ -582,7 +581,7 @@ class CogVideoXPipeline(VideoSysPipeline):
                 else None
             )
             if tora is not None and do_classifier_free_guidance:
-                tora["video_flow_features"] = tora["video_flow_features"].repeat(1, 2, 1, 1, 1).contiguous()
+                video_flow_features = tora["video_flow_features"].repeat(1, 2, 1, 1, 1).contiguous()
 
         # 9. Controlnet
         if controlnet is not None:
@@ -783,7 +782,7 @@ class CogVideoXPipeline(VideoSysPipeline):
                     else:
                         for c in context_queue:
                             partial_latent_model_input = latent_model_input[:, c, :, :, :]
-                            if tora is not None:
+                            if (tora is not None and tora["start_percent"] <= current_step_percentage <= tora["end_percent"]):
                                 if do_classifier_free_guidance:
                                     partial_video_flow_features = tora["video_flow_features"][:, c, :, :, :].repeat(1, 2, 1, 1, 1).contiguous()
                                 else:
@@ -868,7 +867,8 @@ class CogVideoXPipeline(VideoSysPipeline):
                         return_dict=False,
                         controlnet_states=controlnet_states,
                         controlnet_weights=control_weights,
-                        video_flow_features=tora["video_flow_features"] if (tora["start_percent"] <= current_step_percentage <= tora["end_percent"]) else None,
+                        video_flow_features=video_flow_features if (tora is not None and tora["start_percent"] <= current_step_percentage <= tora["end_percent"]) else None,
+
                     )[0]
                     noise_pred = noise_pred.float()
 

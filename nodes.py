@@ -1298,7 +1298,6 @@ class CogVideoSampler:
                 negative_prompt_embeds=negative.to(dtype).to(device),
                 generator=generator,
                 device=device,
-                scheduler_name=scheduler,
                 context_schedule=context_options["context_schedule"] if context_options is not None else None,
                 context_frames=context_frames,
                 context_stride= context_stride,
