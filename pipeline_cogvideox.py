@@ -609,6 +609,11 @@ class CogVideoXPipeline(VideoSysPipeline):
             controlnet_states = None
             control_weights= None
 
+        if tora is not None:
+            for module in self.transformer.fuser_list:
+                for param in module.parameters():
+                    param.data = param.data.to(device)
+
         # 10. Denoising loop
         with self.progress_bar(total=num_inference_steps) as progress_bar:    
             old_pred_original_sample = None # for DPM-solver++
