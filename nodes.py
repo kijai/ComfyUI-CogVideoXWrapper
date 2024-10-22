@@ -672,7 +672,7 @@ class DownloadAndLoadToraModel:
             fuser_list.load_state_dict(fuser_sd)
             for module in fuser_list:
                 for param in module.parameters():
-                    param.data = param.data.to(torch.float16).to(device)
+                    param.data = param.data.to(torch.bfloat16).to(device)
         del fuser_sd
 
         traj_extractor_path = os.path.join(download_path, "traj_extractor", "traj_extractor.safetensors")

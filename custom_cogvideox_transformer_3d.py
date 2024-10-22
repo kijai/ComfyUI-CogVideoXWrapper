@@ -291,8 +291,7 @@ class CogVideoXBlock(nn.Module):
         if video_flow_feature is not None:
             H, W = video_flow_feature.shape[-2:]
             T = norm_hidden_states.shape[1] // H // W
-            
-            h = rearrange(norm_hidden_states, "B (T H W) C -> (B T) C H W", H=H, W=W).to(torch.float16)
+            h = rearrange(norm_hidden_states, "B (T H W) C -> (B T) C H W", H=H, W=W)
             h = fuser(h, video_flow_feature.to(h), T=T)
             norm_hidden_states = rearrange(h, "(B T) C H W ->  B (T H W) C", T=T)
             del h, fuser
