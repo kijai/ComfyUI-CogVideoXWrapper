@@ -953,7 +953,10 @@ class CogVideoImageEncode:
             vae.to(device)
 
         check_diffusers_version()
-        vae._clear_fake_context_parallel_cache()
+        try:
+            vae._clear_fake_context_parallel_cache()
+        except:
+            pass
         
         input_image = image.clone()
         if mask is not None:
@@ -1038,7 +1041,10 @@ class CogVideoImageInterpolationEncode:
             vae.to(device)
 
         check_diffusers_version()
-        vae._clear_fake_context_parallel_cache()
+        try:
+            vae._clear_fake_context_parallel_cache()
+        except:
+            pass
         
         if mask is not None:
             pipeline["pipe"].original_mask = mask
@@ -1104,7 +1110,10 @@ class ToraEncodeTrajectory:
 
         vae = pipeline["pipe"].vae
         vae.enable_slicing()
-        vae._clear_fake_context_parallel_cache()       
+        try:
+            vae._clear_fake_context_parallel_cache()
+        except:
+            pass       
 
         if len(coordinates) < 10:
             coords_list = []
@@ -1185,7 +1194,10 @@ class ToraEncodeOpticalFlow:
 
         vae = pipeline["pipe"].vae
         vae.enable_slicing()
-        vae._clear_fake_context_parallel_cache()       
+        try:
+            vae._clear_fake_context_parallel_cache()
+        except:
+            pass       
 
         video_flow = optical_flow * 2 - 1
         video_flow = rearrange(video_flow, "(B T) H W C -> B C T H W", T=B, B=1)
@@ -1369,7 +1381,10 @@ class CogVideoDecode:
         latents = latents.to(vae.dtype)
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
         latents = 1 / vae.config.scaling_factor * latents
-        vae._clear_fake_context_parallel_cache()
+        try:
+            vae._clear_fake_context_parallel_cache()
+        except:
+            pass
         frames = vae.decode(latents).sample
         vae.disable_tiling()
         if not pipeline["cpu_offloading"]:
