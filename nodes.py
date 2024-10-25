@@ -408,7 +408,11 @@ class DownloadAndLoadCogVideoModel:
         if compile == "torch":
             torch._dynamo.config.suppress_errors = True
             pipe.transformer.to(memory_format=torch.channels_last)
-            pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False, backend="inductor")
+            #pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False, backend="inductor")
+            for i, block in enumerate(pipe.transformer.transformer_blocks):
+                if "CogVideoXBlock" in str(block):
+                    print(block)
+                    pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
         elif compile == "onediff":
             from onediffx import compile_pipe
             os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
@@ -559,10 +563,8 @@ class DownloadAndLoadCogVideoGGUFModel:
            convert_fp8_linear(transformer, vae_dtype)
 
         # compilation
-        if compile == "torch":
-            torch._dynamo.config.suppress_errors = True
-            pipe.transformer.to(memory_format=torch.channels_last)
-            pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False, backend="inductor")
+        for i, block in enumerate(transformer.transformer_blocks):
+                transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
         with open(scheduler_path) as f:
             scheduler_config = json.load(f)
         
