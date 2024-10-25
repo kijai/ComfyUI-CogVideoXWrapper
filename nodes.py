@@ -411,7 +411,6 @@ class DownloadAndLoadCogVideoModel:
             #pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False, backend="inductor")
             for i, block in enumerate(pipe.transformer.transformer_blocks):
                 if "CogVideoXBlock" in str(block):
-                    print(block)
                     pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
         elif compile == "onediff":
             from onediffx import compile_pipe
