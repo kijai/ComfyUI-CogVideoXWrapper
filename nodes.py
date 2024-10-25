@@ -723,7 +723,8 @@ class DownloadAndLoadCogVideoControlNet:
                     [
                         "TheDenk/cogvideox-2b-controlnet-hed-v1",
                         "TheDenk/cogvideox-2b-controlnet-canny-v1",
-                        "TheDenk/cogvideox-5b-controlnet-hed-v1"
+                        "TheDenk/cogvideox-5b-controlnet-hed-v1",
+                        "TheDenk/cogvideox-5b-controlnet-canny-v1"
                     ],
                 ),
 
