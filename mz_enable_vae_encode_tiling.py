@@ -81,6 +81,8 @@ def tiled_encode(self, x: torch.Tensor) -> torch.Tensor:
                 ]
                 
                 tile = self.encoder(tile)
+                if not isinstance(tile, tuple):
+                    tile = (tile,)
                 if self.quant_conv is not None:
                     tile = self.quant_conv(tile)
                 time.append(tile[0])
