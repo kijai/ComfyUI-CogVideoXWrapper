@@ -262,111 +262,111 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
             set_pab_manager(pab_config)
 
     def prepare_latents(
-        self, 
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        video_length,
-        dtype,
-        device,
-        generator,
-        latents=None,
-        video=None,
-        timestep=None,
-        is_strength_max=True,
-        return_noise=False,
-        return_video_latents=False,
-        context_size=None,
-        context_overlap=None,
-        freenoise=False,
-    ):
-        shape = (
+            self, 
             batch_size,
-            (video_length - 1) // self.vae_scale_factor_temporal + 1,
             num_channels_latents,
-            height // self.vae_scale_factor_spatial,
-            width // self.vae_scale_factor_spatial,
-        )
-        if isinstance(generator, list) and len(generator) != batch_size:
-            raise ValueError(
-                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            height,
+            width,
+            video_length,
+            dtype,
+            device,
+            generator,
+            latents=None,
+            video=None,
+            timestep=None,
+            is_strength_max=True,
+            return_noise=False,
+            return_video_latents=False,
+            context_size=None,
+            context_overlap=None,
+            freenoise=False,
+        ):
+            shape = (
+                batch_size,
+                (video_length - 1) // self.vae_scale_factor_temporal + 1,
+                num_channels_latents,
+                height // self.vae_scale_factor_spatial,
+                width // self.vae_scale_factor_spatial,
             )
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
 
-        if return_video_latents or (latents is None and not is_strength_max):
-            video = video.to(device=device, dtype=self.vae.dtype)
-            
-            bs = 1
-            new_video = []
-            for i in range(0, video.shape[0], bs):
-                video_bs = video[i : i + bs]
-                video_bs = self.vae.encode(video_bs)[0]
-                video_bs = video_bs.sample()
-                new_video.append(video_bs)
-            video = torch.cat(new_video, dim = 0)
-            video = video * self.vae.config.scaling_factor
+            if return_video_latents or (latents is None and not is_strength_max):
+                video = video.to(device=device, dtype=self.vae.dtype)
+                
+                bs = 1
+                new_video = []
+                for i in range(0, video.shape[0], bs):
+                    video_bs = video[i : i + bs]
+                    video_bs = self.vae.encode(video_bs)[0]
+                    video_bs = video_bs.sample()
+                    new_video.append(video_bs)
+                video = torch.cat(new_video, dim = 0)
+                video = video * self.vae.config.scaling_factor
 
-            video_latents = video.repeat(batch_size // video.shape[0], 1, 1, 1, 1)
-            video_latents = video_latents.to(device=device, dtype=dtype)
-            video_latents = rearrange(video_latents, "b c f h w -> b f c h w")
+                video_latents = video.repeat(batch_size // video.shape[0], 1, 1, 1, 1)
+                video_latents = video_latents.to(device=device, dtype=dtype)
+                video_latents = rearrange(video_latents, "b c f h w -> b f c h w")
 
-        if latents is None:
-            noise = randn_tensor(shape, generator=generator, device=torch.device("cpu"), dtype=dtype)
-            if freenoise:
-                print("Applying FreeNoise")
-                # code and comments from AnimateDiff-Evolved by Kosinkadink (https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved)
-                video_length = video_length // 4
-                delta = context_size - context_overlap
-                for start_idx in range(0, video_length-context_size, delta):
-                    # start_idx corresponds to the beginning of a context window
-                    # goal: place shuffled in the delta region right after the end of the context window
-                    #       if space after context window is not enough to place the noise, adjust and finish
-                    place_idx = start_idx + context_size
-                    # if place_idx is outside the valid indexes, we are already finished
-                    if place_idx >= video_length:
-                        break
-                    end_idx = place_idx - 1
-                    #print("video_length:", video_length, "start_idx:", start_idx, "end_idx:", end_idx, "place_idx:", place_idx, "delta:", delta)
+            if latents is None:
+                noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+                if freenoise:
+                    print("Applying FreeNoise")
+                    # code and comments from AnimateDiff-Evolved by Kosinkadink (https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved)
+                    video_length_adjusted = video_length // 4
+                    delta = context_size - context_overlap
+                    for start_idx in range(0, video_length_adjusted - context_size, delta):
+                        # start_idx corresponds to the beginning of a context window
+                        # goal: place shuffled in the delta region right after the end of the context window
+                        #       if space after context window is not enough to place the noise, adjust and finish
+                        place_idx = start_idx + context_size
+                        # if place_idx is outside the valid indexes, we are already finished
+                        if place_idx >= video_length_adjusted:
+                            break
+                        end_idx = place_idx - 1
+                        #print("video_length:", video_length, "start_idx:", start_idx, "end_idx:", end_idx, "place_idx:", place_idx, "delta:", delta)
 
-                    # if there is not enough room to copy delta amount of indexes, copy limited amount and finish
-                    if end_idx + delta >= video_length:
-                        final_delta = video_length - place_idx
-                        # generate list of indexes in final delta region
-                        list_idx = torch.tensor(list(range(start_idx,start_idx+final_delta)), device=torch.device("cpu"), dtype=torch.long)
+                        # if there is not enough room to copy delta amount of indexes, copy limited amount and finish
+                        if end_idx + delta >= video_length_adjusted:
+                            final_delta = video_length_adjusted - place_idx
+                            # generate list of indexes in final delta region
+                            list_idx = torch.tensor(list(range(start_idx, start_idx + final_delta)), device=device, dtype=torch.long)
+                            # shuffle list
+                            list_idx = list_idx[torch.randperm(final_delta, generator=generator)]
+                            # apply shuffled indexes
+                            noise[:, place_idx:place_idx + final_delta, :, :, :] = noise[:, list_idx, :, :, :]
+                            break
+                        # otherwise, do normal behavior
+                        # generate list of indexes in delta region
+                        list_idx = torch.tensor(list(range(start_idx, start_idx + delta)), device=device, dtype=torch.long)
                         # shuffle list
-                        list_idx = list_idx[torch.randperm(final_delta, generator=generator)]
+                        list_idx = list_idx[torch.randperm(delta, generator=generator)]
                         # apply shuffled indexes
-                        noise[:, place_idx:place_idx + final_delta, :, :, :] = noise[:, list_idx, :, :, :]
-                        break
-                    # otherwise, do normal behavior
-                    # generate list of indexes in delta region
-                    list_idx = torch.tensor(list(range(start_idx,start_idx+delta)), device=torch.device("cpu"), dtype=torch.long)
-                    # shuffle list
-                    list_idx = list_idx[torch.randperm(delta, generator=generator)]
-                    # apply shuffled indexes
-                    #print("place_idx:", place_idx, "delta:", delta, "list_idx:", list_idx)
-                    noise[:, place_idx:place_idx + delta, :, :, :] = noise[:, list_idx, :, :, :]
+                        #print("place_idx:", place_idx, "delta:", delta, "list_idx:", list_idx)
+                        noise[:, place_idx:place_idx + delta, :, :, :] = noise[:, list_idx, :, :, :]
 
-            # if strength is 1. then initialise the latents to noise, else initial to image + noise
-            latents = noise if is_strength_max else self.scheduler.add_noise(video_latents, noise, timestep)
-            # if pure noise then scale the initial latents by the  Scheduler's init sigma
-            latents = latents * self.scheduler.init_noise_sigma if is_strength_max else latents
-            latents = latents.to(device)
-        else:
-            noise = latents.to(device)
-            latents = noise * self.scheduler.init_noise_sigma
+                # if strength is 1. then initialise the latents to noise, else initial to image + noise
+                latents = noise if is_strength_max else self.scheduler.add_noise(video_latents, noise, timestep)
+                # if pure noise then scale the initial latents by the Scheduler's init sigma
+                latents = latents * self.scheduler.init_noise_sigma if is_strength_max else latents
+                latents = latents.to(device)
+            else:
+                noise = latents.to(device)
+                latents = noise * self.scheduler.init_noise_sigma
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        outputs = (latents,)
+            # scale the initial noise by the standard deviation required by the scheduler
+            outputs = (latents,)
 
-        if return_noise:
-            outputs += (noise,)
+            if return_noise:
+                outputs += (noise,)
 
-        if return_video_latents:
-            outputs += (video_latents,)
+            if return_video_latents:
+                outputs += (video_latents,)
 
-        return outputs
+            return outputs
 
     def prepare_mask_latents(
         self, mask, masked_image, batch_size, height, width, dtype, device, generator, do_classifier_free_guidance, noise_aug_strength

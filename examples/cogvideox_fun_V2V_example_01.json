@@ -1,0 +1,614 @@
+{
+  "last_node_id": 224,
+  "last_link_id": 333,
+  "nodes": [
+    {
+      "id": 216,
+      "type": "CogVideoTextEncode",
+      "pos": {
+        "0": 1320,
+        "1": 2224
+      },
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 315
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            314
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoTextEncode"
+      },
+      "widgets_values": [
+        "",
+        1,
+        true
+      ]
+    },
+    {
+      "id": 217,
+      "type": "CLIPLoader",
+      "pos": {
+        "0": 937,
+        "1": 2245
+      },
+      "size": {
+        "0": 315,
+        "1": 82
+      },
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            315,
+            317
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPLoader"
+      },
+      "widgets_values": [
+        "t5xxl_fp8_e4m3fn.safetensors",
+        "sd3"
+      ]
+    },
+    {
+      "id": 206,
+      "type": "VHS_VideoCombine",
+      "pos": {
+        "0": 2648,
+        "1": 2268
+      },
+      "size": [
+        595.7279663085938,
+        652.9874093191964
+      ],
+      "flags": {
+        "collapsed": false
+      },
+      "order": 8,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 333,
+          "label": "images"
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "label": "audio"
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null,
+          "label": "meta_batch"
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null,
+          "label": "vae"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null,
+          "shape": 3,
+          "label": "Filenames"
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_VideoCombine",
+        "ttNbgOverride": {
+          "color": "#223",
+          "bgcolor": "#335",
+          "groupcolor": "#88A"
+        }
+      },
+      "widgets_values": {
+        "frame_rate": 24,
+        "loop_count": 0,
+        "filename_prefix": "1009/",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": false,
+        "pingpong": false,
+        "save_output": true,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "1009_00373.mp4",
+            "subfolder": "",
+            "type": "output",
+            "format": "video/h264-mp4",
+            "frame_rate": 24
+          },
+          "muted": false
+        }
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 220,
+      "type": "CogVideoDecode",
+      "pos": {
+        "0": 2242.513671875,
+        "1": 2250.128662109375
+      },
+      "size": {
+        "0": 315,
+        "1": 198
+      },
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 320
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 321
+        }
+      ],
+      "outputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "links": [
+            333
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoDecode"
+      },
+      "widgets_values": [
+        false,
+        240,
+        360,
+        0.2,
+        0.2,
+        true
+      ]
+    },
+    {
+      "id": 218,
+      "type": "CogVideoTextEncode",
+      "pos": {
+        "0": 1318,
+        "1": 2492
+      },
+      "size": {
+        "0": 400,
+        "1": 200
+      },
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 317
+        }
+      ],
+      "outputs": [
+        {
+          "name": "conditioning",
+          "type": "CONDITIONING",
+          "links": [
+            318
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoTextEncode"
+      },
+      "widgets_values": [
+        "The video is not of a high quality, it has a low resolution. Strange motion trajectory, a poor composition and deformed video, low resolution, duplicate and ugly, strange body structure, long and strange neck, bad teeth, bad eyes, bad limbs, bad hands, blurry camera, shaking camera. Deformation, blurry, ugly, distortion. ",
+        1,
+        true
+      ]
+    },
+    {
+      "id": 215,
+      "type": "DownloadAndLoadCogVideoModel",
+      "pos": {
+        "0": 1388,
+        "1": 1986
+      },
+      "size": {
+        "0": 315,
+        "1": 194
+      },
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pab_config",
+          "type": "PAB_CONFIG",
+          "link": null
+        },
+        {
+          "name": "block_edit",
+          "type": "TRANSFORMERBLOCKS",
+          "link": null
+        },
+        {
+          "name": "lora",
+          "type": "COGLORA",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            313
+          ],
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "DownloadAndLoadCogVideoModel"
+      },
+      "widgets_values": [
+        "kijai/CogVideoX-Fun-5b",
+        "bf16",
+        "disabled",
+        "disabled",
+        false
+      ]
+    },
+    {
+      "id": 214,
+      "type": "CogVideoXFunVid2VidSampler",
+      "pos": {
+        "0": 1823,
+        "1": 2249
+      },
+      "size": {
+        "0": 380.4000244140625,
+        "1": 306
+      },
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 313
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 314
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 318
+        },
+        {
+          "name": "validation_video",
+          "type": "IMAGE",
+          "link": 332
+        },
+        {
+          "name": "context_options",
+          "type": "COGCONTEXT",
+          "link": 327
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            320
+          ],
+          "slot_index": 0,
+          "shape": 3
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            321
+          ],
+          "slot_index": 1,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoXFunVid2VidSampler"
+      },
+      "widgets_values": [
+        49,
+        768,
+        15861381752719,
+        "fixed",
+        30,
+        7,
+        "DDIM",
+        0.5
+      ]
+    },
+    {
+      "id": 222,
+      "type": "CogVideoContextOptions",
+      "pos": {
+        "0": 1379,
+        "1": 2771
+      },
+      "size": [
+        315,
+        154
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "context_options",
+          "type": "COGCONTEXT",
+          "links": [
+            327
+          ],
+          "slot_index": 0,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoContextOptions"
+      },
+      "widgets_values": [
+        "uniform_standard",
+        48,
+        4,
+        4,
+        true
+      ]
+    },
+    {
+      "id": 209,
+      "type": "VHS_LoadVideo",
+      "pos": {
+        "0": 286,
+        "1": 2110
+      },
+      "size": [
+        426.63287353515625,
+        508.3616420200893
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            332
+          ],
+          "slot_index": 0,
+          "shape": 3
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null,
+          "shape": 3
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": null,
+          "shape": 3
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "links": null,
+          "shape": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadVideo"
+      },
+      "widgets_values": {
+        "video": "CogVideoX-Fun_00006.mp4",
+        "force_rate": 0,
+        "force_size": "Disabled",
+        "custom_width": 512,
+        "custom_height": 512,
+        "frame_load_cap": 0,
+        "skip_first_frames": 0,
+        "select_every_nth": 3,
+        "choose video to upload": "image",
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "frame_load_cap": 0,
+            "skip_first_frames": 0,
+            "force_rate": 0,
+            "filename": "CogVideoX-Fun_00006.mp4",
+            "type": "input",
+            "format": "video/mp4",
+            "select_every_nth": 3
+          },
+          "muted": false
+        }
+      },
+      "color": "#223",
+      "bgcolor": "#335"
+    }
+  ],
+  "links": [
+    [
+      313,
+      215,
+      0,
+      214,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      314,
+      216,
+      0,
+      214,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      315,
+      217,
+      0,
+      216,
+      0,
+      "CLIP"
+    ],
+    [
+      317,
+      217,
+      0,
+      218,
+      0,
+      "CLIP"
+    ],
+    [
+      318,
+      218,
+      0,
+      214,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      320,
+      214,
+      0,
+      220,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      321,
+      214,
+      1,
+      220,
+      1,
+      "LATENT"
+    ],
+    [
+      327,
+      222,
+      0,
+      214,
+      4,
+      "COGCONTEXT"
+    ],
+    [
+      332,
+      209,
+      0,
+      214,
+      3,
+      "IMAGE"
+    ],
+    [
+      333,
+      220,
+      0,
+      206,
+      0,
+      "IMAGE"
+    ]
+  ],
+  "groups": [
+    {
+      "title": "cogvideoxfun v2v sampler",
+      "bounding": [
+        78,
+        1820,
+        3385,
+        1603
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.3797498335832498,
+      "offset": [
+        590.2813176508071,
+        -1550.4283526080162
+      ]
+    }
+  },
+  "version": 0.4
+}

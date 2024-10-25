@@ -1538,6 +1538,9 @@ class CogVideoXFunVid2VidSampler:
                 "denoise_strength": ("FLOAT", {"default": 0.70, "min": 0.05, "max": 1.00, "step": 0.01}),
                 "validation_video": ("IMAGE",),
             },
+            "optional": {
+                "context_options": ("COGCONTEXT", ),
+            },
         }
     
     RETURN_TYPES = ("COGVIDEOPIPE", "LATENT",)
@@ -1545,8 +1548,7 @@ class CogVideoXFunVid2VidSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, video_length, base_resolution, seed, steps, cfg, denoise_strength, scheduler, 
-                validation_video):
+    def process(self, pipeline, positive, negative, video_length, base_resolution, seed, steps, cfg, denoise_strength, scheduler, validation_video, context_options=None):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -1562,15 +1564,20 @@ class CogVideoXFunVid2VidSampler:
         mm.soft_empty_cache()
 
         # Count most suitable height and width
-        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
+        aspect_ratio_sample_size = {key: [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
 
         validation_video = np.array(validation_video.cpu().numpy() * 255, np.uint8)
         original_width, original_height = Image.fromarray(validation_video[0]).size
 
         closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
         height, width = [int(x / 16) * 16 for x in closest_size]
+        log.info(f"Closest bucket size: {width}x{height}")
 
-        # Load Sampler
+        # Handle context_options and adjust scheduler if needed
+        if context_options is not None and context_options["context_schedule"] == "temporal_tiling":
+            logging.info("Temporal tiling enabled, changing scheduler to CogVideoXDDIM")
+            scheduler = "CogVideoXDDIM"
+
         scheduler_config = pipeline["scheduler_config"]
         if scheduler in scheduler_mapping:
             noise_scheduler = scheduler_mapping[scheduler].from_config(scheduler_config)
@@ -1578,7 +1585,15 @@ class CogVideoXFunVid2VidSampler:
         else:
             raise ValueError(f"Unknown scheduler: {scheduler}")
 
-        generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
+        if context_options is not None:
+            context_frames = context_options["context_frames"] // 4
+            context_stride = context_options["context_stride"] // 4
+            context_overlap = context_options["context_overlap"] // 4
+        else:
+            context_frames, context_stride, context_overlap = None, None, None
+
+        # Create generator on the correct device
+        generator = torch.Generator(device=device).manual_seed(seed)
 
         autocastcondition = not pipeline["onediff"] or not dtype == torch.float32
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
@@ -1586,12 +1601,33 @@ class CogVideoXFunVid2VidSampler:
             video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
             input_video, input_video_mask, clip_image = get_video_to_video_latent(validation_video, video_length=video_length, sample_size=(height, width))
 
-            # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
-            #     pipeline = merge_lora(pipeline, _lora_path, _lora_weight)
+            # Move tensors to the correct device
+            input_video = input_video.to(device)
+            input_video_mask = input_video_mask.to(device)
+            if clip_image is not None:
+                clip_image = clip_image.to(device)
+
+            # Move positive and negative prompts to the correct device
+            positive = positive.to(dtype).to(device)
+            negative = negative.to(dtype).to(device)
+
+            # Add print statements to debug devices
+            print(f"Device Information:")
+            print(f"  device: {device}")
+            print(f"  positive.device: {positive.device}")
+            print(f"  negative.device: {negative.device}")
+            print(f"  input_video.device: {input_video.device}")
+            print(f"  input_video_mask.device: {input_video_mask.device}")
+            if clip_image is not None:
+                print(f"  clip_image.device: {clip_image.device}")
+            print(f"  generator device: {generator.device}")
+            print(f"  pipe.device: {device}")
+            print(f"  pipe.vae.device: {next(pipe.vae.parameters()).device}")
+            print(f"  pipe.transformer.device: {next(pipe.transformer.parameters()).device}")
 
             common_params = {
-                "prompt_embeds": positive.to(dtype).to(device),
-                "negative_prompt_embeds": negative.to(dtype).to(device),
+                "prompt_embeds": positive,
+                "negative_prompt_embeds": negative,
                 "num_frames": video_length,
                 "height": height,
                 "width": width,
@@ -1605,24 +1641,14 @@ class CogVideoXFunVid2VidSampler:
                 **common_params,
                 video=input_video,
                 mask_video=input_video_mask,
-                strength=float(denoise_strength)
+                strength=float(denoise_strength),
+                context_schedule=context_options["context_schedule"] if context_options is not None else None,
+                context_frames=context_frames,
+                context_stride=context_stride,
+                context_overlap=context_overlap,
+                freenoise=context_options["freenoise"] if context_options is not None else None
             )
-
-            # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
-            #     pipeline = unmerge_lora(pipeline, _lora_path, _lora_weight)
         return (pipeline, {"samples": latents})
-
-def add_noise_to_reference_video(image, ratio=None):
-    if ratio is None:
-        sigma = torch.normal(mean=-3.0, std=0.5, size=(image.shape[0],)).to(image.device)
-        sigma = torch.exp(sigma).to(image.dtype)
-    else:
-        sigma = torch.ones((image.shape[0],)).to(image.device, image.dtype) * ratio
-    
-    image_noise = torch.randn_like(image) * sigma[:, None, None, None, None]
-    image_noise = torch.where(image==-1, torch.zeros_like(image), image_noise)
-    image = image + image_noise
-    return image
 
 class CogVideoControlImageEncode:
     @classmethod
