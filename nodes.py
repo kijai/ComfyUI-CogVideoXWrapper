@@ -416,7 +416,10 @@ class DownloadAndLoadCogVideoModel:
         if compile == "torch":
             torch._dynamo.config.suppress_errors = True
             pipe.transformer.to(memory_format=torch.channels_last)
-            pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+            #pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False, backend="inductor")
+            for i, block in enumerate(pipe.transformer.transformer_blocks):
+                if "CogVideoXBlock" in str(block):
+                    pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
         elif compile == "onediff":
             from onediffx import compile_pipe
             os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
@@ -466,6 +469,8 @@ class DownloadAndLoadCogVideoGGUFModel:
             "optional": {
                 "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
+                "compile": (["disabled","onediff","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
+              
             }
         }
 
@@ -474,7 +479,7 @@ class DownloadAndLoadCogVideoGGUFModel:
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
 
-    def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload, pab_config=None, block_edit=None):
+    def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload, pab_config=None, block_edit=None, compile="disabled"):
 
         check_diffusers_version()
 
@@ -564,7 +569,9 @@ class DownloadAndLoadCogVideoGGUFModel:
            from .fp8_optimization import convert_fp8_linear
            convert_fp8_linear(transformer, vae_dtype)
 
-        
+        # compilation
+        for i, block in enumerate(transformer.transformer_blocks):
+                transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
         with open(scheduler_path) as f:
             scheduler_config = json.load(f)
         
@@ -731,7 +738,8 @@ class DownloadAndLoadCogVideoControlNet:
                     [
                         "TheDenk/cogvideox-2b-controlnet-hed-v1",
                         "TheDenk/cogvideox-2b-controlnet-canny-v1",
-                        "TheDenk/cogvideox-5b-controlnet-hed-v1"
+                        "TheDenk/cogvideox-5b-controlnet-hed-v1",
+                        "TheDenk/cogvideox-5b-controlnet-canny-v1"
                     ],
                 ),
 
