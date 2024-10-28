@@ -1964,5 +1964,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ToraEncodeTrajectory": "Tora Encode Trajectory",
     "ToraEncodeOpticalFlow": "Tora Encode OpticalFlow",
     "DownloadAndLoadToraModel": "(Down)load Tora Model",
-    "CogVideoXFasterCache": "CogVideo XFasterCache"
+    "CogVideoXFasterCache": "CogVideoX FasterCache"
     }
