@@ -161,9 +161,10 @@ class CogVideoXPipeline(VideoSysPipeline):
         self.original_mask = original_mask
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
 
-
         if pab_config is not None:
             set_pab_manager(pab_config)
+
+        self.input_with_padding = True
 
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, timesteps, denoise_strength,
@@ -517,16 +518,18 @@ class CogVideoXPipeline(VideoSysPipeline):
                 logger.info(f"image cond latents shape: {image_cond_latents.shape}")
             else:
                 logger.info("Only one image conditioning frame received, img2vid")
-                padding_shape = (
-                    batch_size,
-                    (latents.shape[1] - 1),
-                    self.vae.config.latent_channels,
-                    height // self.vae_scale_factor_spatial,
-                    width // self.vae_scale_factor_spatial,
-                )
-                latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae.dtype)
-                image_cond_latents = torch.cat([image_cond_latents, latent_padding], dim=1)
-       
+                if self.input_with_padding:
+                    padding_shape = (
+                        batch_size,
+                        (latents.shape[1] - 1),
+                        self.vae.config.latent_channels,
+                        height // self.vae_scale_factor_spatial,
+                        width // self.vae_scale_factor_spatial,
+                    )
+                    latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae.dtype)
+                    image_cond_latents = torch.cat([image_cond_latents, latent_padding], dim=1)
+                else:
+                    image_cond_latents = image_cond_latents.repeat(1, latents.shape[1], 1, 1, 1)
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 

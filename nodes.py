@@ -269,6 +269,7 @@ class DownloadAndLoadCogVideoModel:
                         "alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose",
                         "alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose",
                         "feizhengcong/CogvideoX-Interpolation",
+                        "NimVideo/cogvideox-2b-img2vid"
                     ],
                 ),
 
@@ -322,9 +323,14 @@ class DownloadAndLoadCogVideoModel:
                 download_path = base_path
 
         elif "2b" in model:
-            base_path = os.path.join(download_path, "CogVideo2B")
-            download_path = base_path
-            repo_id = model
+            if 'img2vid' in model:
+                base_path = os.path.join(download_path, "cogvideox-2b-img2vid")
+                download_path = base_path
+                repo_id = model
+            else:
+                base_path = os.path.join(download_path, "CogVideo2B")
+                download_path = base_path
+                repo_id = model
         else:
             base_path = os.path.join(download_path, (model.split("/")[-1]))
             download_path = base_path
@@ -399,7 +405,9 @@ class DownloadAndLoadCogVideoModel:
                 pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler, pab_config=pab_config)
         else:
             vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
-            pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)        
+            pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)
+            if "cogvideox-2b-img2vid" in model:
+                pipe.input_with_padding = False 
 
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
