@@ -469,7 +469,7 @@ class DownloadAndLoadCogVideoGGUFModel:
             "optional": {
                 "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
-                "compile": (["disabled","onediff","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
+                "compile": (["disabled","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
               
             }
         }
@@ -569,9 +569,10 @@ class DownloadAndLoadCogVideoGGUFModel:
            from .fp8_optimization import convert_fp8_linear
            convert_fp8_linear(transformer, vae_dtype)
 
-        # compilation
-        for i, block in enumerate(transformer.transformer_blocks):
-                transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
+        if compile == "torch":
+            # compilation
+            for i, block in enumerate(transformer.transformer_blocks):
+                    transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
         with open(scheduler_path) as f:
             scheduler_config = json.load(f)
         
@@ -1107,7 +1108,7 @@ class ToraEncodeTrajectory:
             "coordinates": ("STRING", {"forceInput": True}),
             "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
             "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
-            "num_frames": ("INT", {"default": 49, "min": 16, "max": 1024, "step": 1}),
+            "num_frames": ("INT", {"default": 49, "min": 2, "max": 1024, "step": 1}),
             "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
             "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             "end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
@@ -1482,6 +1483,8 @@ class CogVideoXFunSampler:
                 "context_options": ("COGCONTEXT", ),
                 "tora_trajectory": ("TORAFEATURES", ),
                 "fastercache": ("FASTERCACHEARGS",),
+                "vid2vid_images": ("IMAGE",),
+                "vid2vid_denoise": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.001}),
             },
         }
     
@@ -1491,7 +1494,8 @@ class CogVideoXFunSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, pipeline,  positive, negative, video_length, base_resolution, seed, steps, cfg, scheduler, 
-                start_img=None, end_img=None, opt_empty_latent=None, noise_aug_strength=0.0563, context_options=None, fastercache=None, tora_trajectory=None):
+                start_img=None, end_img=None, opt_empty_latent=None, noise_aug_strength=0.0563, context_options=None, fastercache=None, 
+                tora_trajectory=None, vid2vid_images=None, vid2vid_denoise=1.0):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -1506,8 +1510,12 @@ class CogVideoXFunSampler:
         mm.soft_empty_cache()
 
         aspect_ratio_sample_size = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
-
-        if start_img is not None:
+        #vid2vid
+        if vid2vid_images is not None:
+            validation_video = np.array(vid2vid_images.cpu().numpy() * 255, np.uint8)
+            original_width, original_height = Image.fromarray(validation_video[0]).size
+        #img2vid
+        elif start_img is not None:
             start_img = [to_pil(_start_img) for _start_img in start_img] if start_img is not None else None
             end_img = [to_pil(_end_img) for _end_img in end_img] if end_img is not None else None
             # Count most suitable height and width
@@ -1560,28 +1568,34 @@ class CogVideoXFunSampler:
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
             video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
-            input_video, input_video_mask, clip_image = get_image_to_video_latent(start_img, end_img, video_length=video_length, sample_size=(height, width))
+            if vid2vid_images is not None:
+                input_video, input_video_mask, clip_image = get_video_to_video_latent(validation_video, video_length=video_length, sample_size=(height, width))
+            else:
+                input_video, input_video_mask, clip_image = get_image_to_video_latent(start_img, end_img, video_length=video_length, sample_size=(height, width))
 
+            common_params = {
+                "prompt_embeds": positive.to(dtype).to(device),
+                "negative_prompt_embeds": negative.to(dtype).to(device),
+                "num_frames": video_length,
+                "height": height,
+                "width": width,
+                "generator": generator,
+                "guidance_scale": cfg,
+                "num_inference_steps": steps,
+                "comfyui_progressbar": True,
+                "context_schedule":context_options["context_schedule"] if context_options is not None else None,
+                "context_frames":context_frames,
+                "context_stride": context_stride,
+                "context_overlap": context_overlap,
+                "freenoise":context_options["freenoise"] if context_options is not None else None,
+                "tora":tora_trajectory if tora_trajectory is not None else None,
+            }
             latents = pipe(
-                prompt_embeds=positive.to(dtype).to(device),
-                negative_prompt_embeds=negative.to(dtype).to(device),
-                num_frames = video_length,
-                height      = height,
-                width       = width,
-                generator   = generator,
-                guidance_scale = cfg,
-                num_inference_steps = steps,
-
+                **common_params,
                 video        = input_video,
                 mask_video   = input_video_mask,
-                comfyui_progressbar = True,
                 noise_aug_strength = noise_aug_strength,
-                context_schedule=context_options["context_schedule"] if context_options is not None else None,
-                context_frames=context_frames,
-                context_stride= context_stride,
-                context_overlap= context_overlap,
-                freenoise=context_options["freenoise"] if context_options is not None else None,
-                tora=tora_trajectory if tora_trajectory is not None else None,
+                strength = vid2vid_denoise,
             )
         #if not pipeline["cpu_offloading"]:
         #     pipe.transformer.to(offload_device)
@@ -1594,95 +1608,16 @@ class CogVideoXFunVid2VidSampler:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "pipeline": ("COGVIDEOPIPE",),
-                "positive": ("CONDITIONING", ),
-                "negative": ("CONDITIONING", ),
-                "video_length": ("INT", {"default": 49, "min": 5, "max": 49, "step": 4}),
-                "base_resolution": ("INT", {"min": 64, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
-                "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
-                "steps": ("INT", {"default": 25, "min": 1, "max": 200, "step": 1}),
-                "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
-                "scheduler": (available_schedulers,
-                    {
-                        "default": 'DDIM'
-                    }
-                ),
-                "denoise_strength": ("FLOAT", {"default": 0.70, "min": 0.05, "max": 1.00, "step": 0.01}),
-                "validation_video": ("IMAGE",),
+                "note": ("STRING", {"default": "This node is deprecated, functionality moved to 'CogVideoXFunSampler' node instead.", "multiline": True}),
             },
         }
     
-    RETURN_TYPES = ("COGVIDEOPIPE", "LATENT",)
-    RETURN_NAMES = ("cogvideo_pipe", "samples",)
+    RETURN_TYPES = ()
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
-
-    def process(self, pipeline, positive, negative, video_length, base_resolution, seed, steps, cfg, denoise_strength, scheduler, 
-                validation_video):
-        device = mm.get_torch_device()
-        offload_device = mm.unet_offload_device()
-        pipe = pipeline["pipe"]
-        dtype = pipeline["dtype"]
-        base_path = pipeline["base_path"]
-
-        assert "fun" in base_path.lower(), "'Unfun' models not supported in 'CogVideoXFunSampler', use the 'CogVideoSampler'"
-        assert "pose" not in base_path.lower(), "'Pose' models not supported in 'CogVideoXFunVid2VidSampler', use the 'CogVideoXFunControlSampler'"
-
-        if not pipeline["cpu_offloading"]:
-            pipe.enable_model_cpu_offload(device=device)
-
-        mm.soft_empty_cache()
-
-        # Count most suitable height and width
-        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
-
-        validation_video = np.array(validation_video.cpu().numpy() * 255, np.uint8)
-        original_width, original_height = Image.fromarray(validation_video[0]).size
-
-        closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
-        height, width = [int(x / 16) * 16 for x in closest_size]
-
-        # Load Sampler
-        scheduler_config = pipeline["scheduler_config"]
-        if scheduler in scheduler_mapping:
-            noise_scheduler = scheduler_mapping[scheduler].from_config(scheduler_config)
-            pipe.scheduler = noise_scheduler
-        else:
-            raise ValueError(f"Unknown scheduler: {scheduler}")
-
-        generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
-
-        autocastcondition = not pipeline["onediff"] or not dtype == torch.float32
-        autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
-        with autocast_context:
-            video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
-            input_video, input_video_mask, clip_image = get_video_to_video_latent(validation_video, video_length=video_length, sample_size=(height, width))
-
-            # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
-            #     pipeline = merge_lora(pipeline, _lora_path, _lora_weight)
-
-            common_params = {
-                "prompt_embeds": positive.to(dtype).to(device),
-                "negative_prompt_embeds": negative.to(dtype).to(device),
-                "num_frames": video_length,
-                "height": height,
-                "width": width,
-                "generator": generator,
-                "guidance_scale": cfg,
-                "num_inference_steps": steps,
-                "comfyui_progressbar": True,
-            }
-
-            latents = pipe(
-                **common_params,
-                video=input_video,
-                mask_video=input_video_mask,
-                strength=float(denoise_strength)
-            )
-
-            # for _lora_path, _lora_weight in zip(cogvideoxfun_model.get("loras", []), cogvideoxfun_model.get("strength_model", [])):
-            #     pipeline = unmerge_lora(pipeline, _lora_path, _lora_weight)
-        return (pipeline, {"samples": latents})
+    DEPRECATED = True
+    def process(self):
+        return ()
 
 def add_noise_to_reference_video(image, ratio=None):
     if ratio is None:
