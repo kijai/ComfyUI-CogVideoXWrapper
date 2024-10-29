@@ -21,7 +21,7 @@ New features:
 - Initial context windowing with FreeNoise noise shuffling mainly for vid2vid and pose2vid pipelines for longer generations, haven't figured it out for img2vid yet
 - GGUF models and tiled encoding for I2V and pose pipelines (thanks to MinusZoneAI)
 - [sageattention](https://github.com/thu-ml/SageAttention) support (Linux only) for a speed boost, I experienced ~20-30% increase with it, stacks with fp8 fast mode, doesn't need compiling
-- Support CogVideoX-Fun 1.1 and it's pose models with additional control strenght and application step settings, this model's input does NOT have to be just dwpose skeletons, just about anything can work
+- Support CogVideoX-Fun 1.1 and it's pose models with additional control strength and application step settings, this model's input does NOT have to be just dwpose skeletons, just about anything can work
 - Support LoRAs
 
 https://github.com/user-attachments/assets/ddeb8f38-a647-42b3-a4b1-c6936f961deb
