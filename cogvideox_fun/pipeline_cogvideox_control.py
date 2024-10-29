@@ -528,6 +528,7 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
         context_stride: Optional[int] = None,
         context_overlap: Optional[int] = None,
         freenoise: Optional[bool] = True,
+        tora: Optional[dict] = None,
     ) -> Union[CogVideoX_Fun_PipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -720,7 +721,13 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                 if self.transformer.config.use_rotary_positional_embeddings
                 else None
             )
-            
+            if tora is not None and do_classifier_free_guidance:
+                video_flow_features = tora["video_flow_features"].repeat(1, 2, 1, 1, 1).contiguous()
+
+        if tora is not None:
+            for module in self.transformer.fuser_list:
+                for param in module.parameters():
+                    param.data = param.data.to(device)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             # for DPM-solver++
@@ -910,6 +917,8 @@ class CogVideoX_Fun_Pipeline_Control(VideoSysPipeline):
                         image_rotary_emb=image_rotary_emb,
                         return_dict=False,
                         control_latents=current_control_latents,
+                        video_flow_features=video_flow_features if (tora is not None and tora["start_percent"] <= current_step_percentage <= tora["end_percent"]) else None,
+
                     )[0]
                     noise_pred = noise_pred.float()
 

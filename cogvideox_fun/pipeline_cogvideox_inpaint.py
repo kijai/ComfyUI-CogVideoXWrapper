@@ -610,6 +610,7 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
         context_stride: Optional[int] = None,
         context_overlap: Optional[int] = None,
         freenoise: Optional[bool] = True,
+        tora: Optional[dict] = None,
     ) -> Union[CogVideoX_Fun_PipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -889,6 +890,13 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                 if self.transformer.config.use_rotary_positional_embeddings
                 else None
             )
+            if tora is not None and do_classifier_free_guidance:
+                video_flow_features = tora["video_flow_features"].repeat(1, 2, 1, 1, 1).contiguous()
+
+        if tora is not None:
+            for module in self.transformer.fuser_list:
+                for param in module.parameters():
+                    param.data = param.data.to(device)
 
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -1061,6 +1069,8 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
 
+                    current_step_percentage = i / num_inference_steps
+
                     # predict noise model_output
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
@@ -1069,6 +1079,8 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                         image_rotary_emb=image_rotary_emb,
                         return_dict=False,
                         inpaint_latents=inpaint_latents,
+                        video_flow_features=video_flow_features if (tora is not None and tora["start_percent"] <= current_step_percentage <= tora["end_percent"]) else None,
+
                     )[0]
                     noise_pred = noise_pred.float()
 

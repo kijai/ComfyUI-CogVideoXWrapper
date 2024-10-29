@@ -1480,6 +1480,8 @@ class CogVideoXFunSampler:
                 "opt_empty_latent": ("LATENT",),
                 "noise_aug_strength": ("FLOAT", {"default": 0.0563, "min": 0.0, "max": 1.0, "step": 0.001}),
                 "context_options": ("COGCONTEXT", ),
+                "tora_trajectory": ("TORAFEATURES", ),
+                "fastercache": ("FASTERCACHEARGS",),
             },
         }
     
@@ -1489,7 +1491,7 @@ class CogVideoXFunSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, pipeline,  positive, negative, video_length, base_resolution, seed, steps, cfg, scheduler, 
-                start_img=None, end_img=None, opt_empty_latent=None, noise_aug_strength=0.0563, context_options=None):
+                start_img=None, end_img=None, opt_empty_latent=None, noise_aug_strength=0.0563, context_options=None, fastercache=None, tora_trajectory=None):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         pipe = pipeline["pipe"]
@@ -1538,6 +1540,20 @@ class CogVideoXFunSampler:
         else:
             context_frames, context_stride, context_overlap = None, None, None
 
+        if tora_trajectory is not None:
+            pipe.transformer.fuser_list = tora_trajectory["fuser_list"]
+
+        if fastercache is not None:
+            pipe.transformer.use_fastercache = True
+            pipe.transformer.fastercache_counter = 0
+            pipe.transformer.fastercache_start_step = fastercache["start_step"]
+            pipe.transformer.fastercache_lf_step = fastercache["lf_step"]
+            pipe.transformer.fastercache_hf_step = fastercache["hf_step"]
+            pipe.transformer.fastercache_device = fastercache["cache_device"]
+        else:
+            pipe.transformer.use_fastercache = False
+            pipe.transformer.fastercache_counter = 0
+
         generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
         autocastcondition = not pipeline["onediff"] or not dtype == torch.float32
@@ -1564,7 +1580,8 @@ class CogVideoXFunSampler:
                 context_frames=context_frames,
                 context_stride= context_stride,
                 context_overlap= context_overlap,
-                freenoise=context_options["freenoise"] if context_options is not None else None
+                freenoise=context_options["freenoise"] if context_options is not None else None,
+                tora=tora_trajectory if tora_trajectory is not None else None,
             )
         #if not pipeline["cpu_offloading"]:
         #     pipe.transformer.to(offload_device)

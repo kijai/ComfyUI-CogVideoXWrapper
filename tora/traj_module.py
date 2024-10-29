@@ -287,11 +287,21 @@ class MGF(nn.Module):
             gamma_flow = self.flow_gamma_spatial(flow)
             beta_flow = self.flow_beta_spatial(flow)
             _, _, hh, wh = beta_flow.shape
-            gamma_flow = rearrange(gamma_flow, "(b f) c h w -> (b h w) c f", f=T)
-            beta_flow = rearrange(beta_flow, "(b f) c h w -> (b h w) c f", f=T)
-            gamma_flow = self.flow_gamma_temporal(gamma_flow)
-            beta_flow = self.flow_beta_temporal(beta_flow)
-            gamma_flow = rearrange(gamma_flow, "(b h w) c f -> (b f) c h w", h=hh, w=wh)
-            beta_flow = rearrange(beta_flow, "(b h w) c f -> (b f) c h w", h=hh, w=wh)
+            
+            if gamma_flow.shape[0] == 1:  # Check if batch size is 1
+                gamma_flow = rearrange(gamma_flow, "b c h w -> b c (h w)")
+                beta_flow = rearrange(beta_flow, "b c h w -> b c (h w)")
+                gamma_flow = self.flow_gamma_temporal(gamma_flow)
+                beta_flow = self.flow_beta_temporal(beta_flow)
+                gamma_flow = rearrange(gamma_flow, "b c (h w) -> b c h w", h=hh, w=wh)
+                beta_flow = rearrange(beta_flow, "b c (h w) -> b c h w", h=hh, w=wh)
+            else:
+                gamma_flow = rearrange(gamma_flow, "(b f) c h w -> (b h w) c f", f=T)
+                beta_flow = rearrange(beta_flow, "(b f) c h w -> (b h w) c f", f=T)
+                gamma_flow = self.flow_gamma_temporal(gamma_flow)
+                beta_flow = self.flow_beta_temporal(beta_flow)
+                gamma_flow = rearrange(gamma_flow, "(b h w) c f -> (b f) c h w", h=hh, w=wh)
+                beta_flow = rearrange(beta_flow, "(b h w) c f -> (b f) c h w", h=hh, w=wh)
+            
             h = h + self.flow_cond_norm(h) * gamma_flow + beta_flow
         return h

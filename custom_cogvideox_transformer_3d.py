@@ -662,7 +662,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
                         encoder_hidden_states=encoder_hidden_states[:1],
                         temb=emb[:1],
                         image_rotary_emb=image_rotary_emb,
-                        video_flow_feature=video_flow_features[i] if video_flow_features is not None else None,
+                        video_flow_feature=video_flow_features[i][:1] if video_flow_features is not None else None,
                         fuser = self.fuser_list[i] if self.fuser_list is not None else None,
                         fastercache_counter = self.fastercache_counter,
                         fastercache_device = self.fastercache_device
