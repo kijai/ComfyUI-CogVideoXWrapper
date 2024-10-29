@@ -1113,7 +1113,7 @@ class ToraEncodeTrajectory:
             "end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
             "optional": {
-                "enable_tiling": ("BOOL", {"default": False}),
+                "enable_tiling": ("BOOLEAN", {"default": False}),
             }
         }
 
