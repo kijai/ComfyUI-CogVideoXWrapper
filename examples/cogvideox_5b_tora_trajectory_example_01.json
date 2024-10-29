@@ -1,6 +1,6 @@
 {
-  "last_node_id": 70,
-  "last_link_id": 165,
+  "last_node_id": 72,
+  "last_link_id": 174,
   "nodes": [
     {
       "id": 20,
@@ -63,7 +63,7 @@
           "name": "conditioning",
           "type": "CONDITIONING",
           "links": [
-            123
+            168
           ],
           "slot_index": 0,
           "shape": 3
@@ -117,8 +117,8 @@
           "name": "cogvideo_pipe",
           "type": "COGVIDEOPIPE",
           "links": [
-            121,
-            159
+            159,
+            166
           ],
           "slot_index": 0,
           "shape": 3
@@ -144,7 +144,7 @@
       },
       "size": {
         "0": 313.4619445800781,
-        "1": 270
+        "1": 286
       },
       "flags": {},
       "order": 7,
@@ -219,7 +219,8 @@
         1,
         [
           1
-        ]
+        ],
+        1
       ]
     },
     {
@@ -240,12 +241,12 @@
         {
           "name": "pipeline",
           "type": "COGVIDEOPIPE",
-          "link": 128
+          "link": 172
         },
         {
           "name": "samples",
           "type": "LATENT",
-          "link": 127
+          "link": 173
         }
       ],
       "outputs": [
@@ -386,7 +387,7 @@
           "hidden": false,
           "paused": false,
           "params": {
-            "filename": "CogVideoX-Tora-trajectory_00012.mp4",
+            "filename": "CogVideoX-Tora-trajectory_00001.mp4",
             "subfolder": "",
             "type": "temp",
             "format": "video/h264-mp4",
@@ -422,7 +423,7 @@
           "name": "conditioning",
           "type": "CONDITIONING",
           "links": [
-            122
+            167
           ],
           "slot_index": 0,
           "shape": 3
@@ -451,7 +452,14 @@
       "flags": {},
       "order": 2,
       "mode": 0,
-      "inputs": [],
+      "inputs": [
+        {
+          "name": "bg_image",
+          "type": "IMAGE",
+          "link": null,
+          "shape": 7
+        }
+      ],
       "outputs": [
         {
           "name": "mask",
@@ -504,191 +512,9 @@
         0,
         1,
         null,
+        null,
         null
       ]
-    },
-    {
-      "id": 57,
-      "type": "CogVideoSampler",
-      "pos": {
-        "0": 1138,
-        "1": 150
-      },
-      "size": {
-        "0": 399.8780822753906,
-        "1": 390
-      },
-      "flags": {},
-      "order": 10,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "pipeline",
-          "type": "COGVIDEOPIPE",
-          "link": 121
-        },
-        {
-          "name": "positive",
-          "type": "CONDITIONING",
-          "link": 122
-        },
-        {
-          "name": "negative",
-          "type": "CONDITIONING",
-          "link": 123
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "image_cond_latents",
-          "type": "LATENT",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "context_options",
-          "type": "COGCONTEXT",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "controlnet",
-          "type": "COGVIDECONTROLNET",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "tora_trajectory",
-          "type": "TORAFEATURES",
-          "link": 163,
-          "shape": 7
-        },
-        {
-          "name": "num_frames",
-          "type": "INT",
-          "link": 157,
-          "widget": {
-            "name": "num_frames"
-          }
-        },
-        {
-          "name": "height",
-          "type": "INT",
-          "link": 151,
-          "widget": {
-            "name": "height"
-          }
-        },
-        {
-          "name": "width",
-          "type": "INT",
-          "link": 152,
-          "widget": {
-            "name": "width"
-          }
-        }
-      ],
-      "outputs": [
-        {
-          "name": "cogvideo_pipe",
-          "type": "COGVIDEOPIPE",
-          "links": [
-            128
-          ],
-          "slot_index": 0,
-          "shape": 3
-        },
-        {
-          "name": "samples",
-          "type": "LATENT",
-          "links": [
-            127
-          ],
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "CogVideoSampler"
-      },
-      "widgets_values": [
-        480,
-        720,
-        49,
-        32,
-        6,
-        65334758276105,
-        "fixed",
-        "CogVideoXDPMScheduler",
-        1
-      ]
-    },
-    {
-      "id": 67,
-      "type": "GetMaskSizeAndCount",
-      "pos": {
-        "0": 763,
-        "1": 772
-      },
-      "size": {
-        "0": 264.5999755859375,
-        "1": 86
-      },
-      "flags": {
-        "collapsed": true
-      },
-      "order": 6,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "mask",
-          "type": "MASK",
-          "link": 146
-        }
-      ],
-      "outputs": [
-        {
-          "name": "mask",
-          "type": "MASK",
-          "links": null
-        },
-        {
-          "name": "720 width",
-          "type": "INT",
-          "links": [
-            149,
-            152,
-            161
-          ],
-          "slot_index": 1
-        },
-        {
-          "name": "480 height",
-          "type": "INT",
-          "links": [
-            150,
-            151,
-            162
-          ],
-          "slot_index": 2
-        },
-        {
-          "name": "49 count",
-          "type": "INT",
-          "links": [
-            157,
-            160
-          ],
-          "slot_index": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "GetMaskSizeAndCount"
-      },
-      "widgets_values": []
     },
     {
       "id": 44,
@@ -699,7 +525,7 @@
       },
       "size": [
         1131.619140625,
-        1065.0794270833335
+        310
       ],
       "flags": {},
       "order": 13,
@@ -802,10 +628,10 @@
         "0": 1112,
         "1": 663
       },
-      "size": [
-        355.20001220703125,
-        222
-      ],
+      "size": {
+        "0": 355.20001220703125,
+        "1": 230
+      },
       "flags": {},
       "order": 8,
       "mode": 0,
@@ -858,7 +684,7 @@
           "name": "tora_trajectory",
           "type": "TORAFEATURES",
           "links": [
-            163
+            169
           ]
         },
         {
@@ -877,6 +703,193 @@
         49,
         1,
         0,
+        1,
+        false
+      ]
+    },
+    {
+      "id": 67,
+      "type": "GetMaskSizeAndCount",
+      "pos": {
+        "0": 763,
+        "1": 772
+      },
+      "size": {
+        "0": 264.5999755859375,
+        "1": 86
+      },
+      "flags": {
+        "collapsed": true
+      },
+      "order": 6,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "link": 146
+        }
+      ],
+      "outputs": [
+        {
+          "name": "mask",
+          "type": "MASK",
+          "links": null
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": [
+            149,
+            161,
+            171
+          ],
+          "slot_index": 1
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": [
+            150,
+            162,
+            170
+          ],
+          "slot_index": 2
+        },
+        {
+          "name": "count",
+          "type": "INT",
+          "links": [
+            160,
+            174
+          ],
+          "slot_index": 3
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "GetMaskSizeAndCount"
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 72,
+      "type": "CogVideoSampler",
+      "pos": {
+        "0": 1138,
+        "1": 150
+      },
+      "size": {
+        "0": 405.5999755859375,
+        "1": 410
+      },
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "pipeline",
+          "type": "COGVIDEOPIPE",
+          "link": 166
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 167
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 168
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "image_cond_latents",
+          "type": "LATENT",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "context_options",
+          "type": "COGCONTEXT",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "controlnet",
+          "type": "COGVIDECONTROLNET",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "tora_trajectory",
+          "type": "TORAFEATURES",
+          "link": 169,
+          "shape": 7
+        },
+        {
+          "name": "fastercache",
+          "type": "FASTERCACHEARGS",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "num_frames",
+          "type": "INT",
+          "link": 174,
+          "widget": {
+            "name": "num_frames"
+          }
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "link": 170,
+          "widget": {
+            "name": "height"
+          }
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "link": 171,
+          "widget": {
+            "name": "width"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "name": "cogvideo_pipe",
+          "type": "COGVIDEOPIPE",
+          "links": [
+            172
+          ]
+        },
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "links": [
+            173
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CogVideoSampler"
+      },
+      "widgets_values": [
+        480,
+        720,
+        49,
+        32,
+        6,
+        65334758276105,
+        "fixed",
+        "CogVideoXDPMScheduler",
         1
       ]
     }
@@ -897,46 +910,6 @@
       31,
       0,
       "CLIP"
-    ],
-    [
-      121,
-      1,
-      0,
-      57,
-      0,
-      "COGVIDEOPIPE"
-    ],
-    [
-      122,
-      30,
-      0,
-      57,
-      1,
-      "CONDITIONING"
-    ],
-    [
-      123,
-      31,
-      0,
-      57,
-      2,
-      "CONDITIONING"
-    ],
-    [
-      127,
-      57,
-      1,
-      56,
-      1,
-      "LATENT"
-    ],
-    [
-      128,
-      57,
-      0,
-      56,
-      0,
-      "COGVIDEOPIPE"
     ],
     [
       142,
@@ -979,22 +952,6 @@
       "INT"
     ],
     [
-      151,
-      67,
-      2,
-      57,
-      9,
-      "INT"
-    ],
-    [
-      152,
-      67,
-      1,
-      57,
-      10,
-      "INT"
-    ],
-    [
       153,
       65,
       0,
@@ -1025,14 +982,6 @@
       44,
       0,
       "IMAGE"
-    ],
-    [
-      157,
-      67,
-      3,
-      57,
-      8,
-      "INT"
     ],
     [
       159,
@@ -1067,14 +1016,6 @@
       "INT"
     ],
     [
-      163,
-      69,
-      0,
-      57,
-      7,
-      "TORAFEATURES"
-    ],
-    [
       164,
       70,
       0,
@@ -1089,16 +1030,88 @@
       69,
       2,
       "STRING"
+    ],
+    [
+      166,
+      1,
+      0,
+      72,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      167,
+      30,
+      0,
+      72,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      168,
+      31,
+      0,
+      72,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      169,
+      69,
+      0,
+      72,
+      7,
+      "TORAFEATURES"
+    ],
+    [
+      170,
+      67,
+      2,
+      72,
+      10,
+      "INT"
+    ],
+    [
+      171,
+      67,
+      1,
+      72,
+      11,
+      "INT"
+    ],
+    [
+      172,
+      72,
+      0,
+      56,
+      0,
+      "COGVIDEOPIPE"
+    ],
+    [
+      173,
+      72,
+      1,
+      56,
+      1,
+      "LATENT"
+    ],
+    [
+      174,
+      67,
+      3,
+      72,
+      9,
+      "INT"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.6303940863129383,
+      "scale": 0.7627768444386698,
       "offset": [
-        302.46497962544663,
-        77.05651988573555
+        -854.9458997028877,
+        235.76201522394632
       ]
     }
   },
