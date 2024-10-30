@@ -66,16 +66,6 @@ class CogVideoXAttnProcessor2_0:
         query = attn.to_q(hidden_states)
         key = attn.to_k(hidden_states)
         value = attn.to_v(hidden_states)
-
-        # if attn.parallel_manager.sp_size > 1:
-        #     assert (
-        #         attn.heads % attn.parallel_manager.sp_size == 0
-        #     ), f"Number of heads {attn.heads} must be divisible by sequence parallel size {attn.parallel_manager.sp_size}"
-        #     attn_heads = attn.heads // attn.parallel_manager.sp_size
-        #     query, key, value = map(
-        #         lambda x: all_to_all_comm(x, attn.parallel_manager.sp_group, scatter_dim=2, gather_dim=1),
-        #         [query, key, value],
-        #     )
         
         attn_heads = attn.heads
 
@@ -110,9 +100,6 @@ class CogVideoXAttnProcessor2_0:
             )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn_heads * head_dim)
-
-        #if attn.parallel_manager.sp_size > 1:
-        #    hidden_states = all_to_all_comm(hidden_states, attn.parallel_manager.sp_group, scatter_dim=1, gather_dim=2)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)

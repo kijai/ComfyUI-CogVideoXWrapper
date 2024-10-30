@@ -378,12 +378,6 @@ class CogVideoXBlock(nn.Module):
             elif fastercache_counter > fastercache_start_step:
                 self.cached_hidden_states[-1].copy_(attn_hidden_states.to(fastercache_device))
                 self.cached_encoder_hidden_states[-1].copy_(attn_encoder_hidden_states.to(fastercache_device))
-        # attention
-        attn_hidden_states, attn_encoder_hidden_states = self.attn1(
-            hidden_states=norm_hidden_states,
-            encoder_hidden_states=norm_encoder_hidden_states,
-            image_rotary_emb=image_rotary_emb,
-        )
 
         hidden_states = hidden_states + gate_msa * attn_hidden_states
         encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_encoder_hidden_states
