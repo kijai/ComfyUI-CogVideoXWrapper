@@ -294,7 +294,7 @@ class DownloadAndLoadCogVideoGGUFModel:
 
         sd = load_torch_file(gguf_path)
 
-        from .nodes import mz_gguf_loader
+        from . import mz_gguf_loader
         import importlib
         importlib.reload(mz_gguf_loader)
 
