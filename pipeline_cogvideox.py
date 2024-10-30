@@ -613,6 +613,10 @@ class CogVideoXPipeline(VideoSysPipeline):
             control_weights= None
 
         if tora is not None:
+            trajectory_length = tora["video_flow_features"].shape[1]
+            logger.info(f"Tora trajectory length: {trajectory_length}")
+            if trajectory_length != latents.shape[1]:
+                raise ValueError(f"Tora trajectory length {trajectory_length} does not match inpaint_latents count {latents.shape[2]}")
             for module in self.transformer.fuser_list:
                 for param in module.parameters():
                     param.data = param.data.to(device)

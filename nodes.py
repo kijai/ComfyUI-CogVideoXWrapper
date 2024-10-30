@@ -915,6 +915,7 @@ class CogVideoXFunSampler:
         base_path = pipeline["base_path"]
         assert "fun" in base_path.lower(), "'Unfun' models not supported in 'CogVideoXFunSampler', use the 'CogVideoSampler'"
         assert "pose" not in base_path.lower(), "'Pose' models not supported in 'CogVideoXFunSampler', use the 'CogVideoXFunControlSampler'"
+        
 
         if not pipeline["cpu_offloading"]:
             pipe.enable_model_cpu_offload(device=device)

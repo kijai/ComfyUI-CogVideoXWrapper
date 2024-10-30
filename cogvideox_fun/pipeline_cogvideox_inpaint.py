@@ -894,6 +894,10 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                 video_flow_features = tora["video_flow_features"].repeat(1, 2, 1, 1, 1).contiguous()
 
         if tora is not None:
+            trajectory_length = tora["video_flow_features"].shape[1]
+            logger.info(f"Tora trajectory length: {trajectory_length}")
+            if trajectory_length != latents.shape[1]:
+                raise ValueError(f"Tora trajectory length {trajectory_length} does not match inpaint_latents count {latents.shape[2]}")
             for module in self.transformer.fuser_list:
                 for param in module.parameters():
                     param.data = param.data.to(device)
