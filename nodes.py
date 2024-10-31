@@ -772,6 +772,13 @@ class CogVideoSampler:
             )
         if not pipeline["cpu_offloading"]:
             pipe.transformer.to(offload_device)
+
+        if fastercache is not None:
+            for block in pipe.transformer.transformer_blocks:
+                if (hasattr, block, "cached_hidden_states") and block.cached_hidden_states is not None:
+                    block.cached_hidden_states = None
+                    block.cached_encoder_hidden_states = None
+                    
         mm.soft_empty_cache()
 
         return (pipeline, {"samples": latents})
@@ -1012,6 +1019,13 @@ class CogVideoXFunSampler:
             )
         #if not pipeline["cpu_offloading"]:
         #     pipe.transformer.to(offload_device)
+        #clear FasterCache
+        if fastercache is not None:
+            for block in pipe.transformer.transformer_blocks:
+                if (hasattr, block, "cached_hidden_states") and block.cached_hidden_states is not None:
+                    block.cached_hidden_states = None
+                    block.cached_encoder_hidden_states = None
+
         mm.soft_empty_cache()
 
         return (pipeline, {"samples": latents})

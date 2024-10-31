@@ -723,8 +723,6 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
 
         device = self._execution_device
 
-        #self.vae.to(device)
-
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
@@ -911,6 +909,7 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+
                 if use_temporal_tiling and isinstance(self.scheduler, CogVideoXDDIMScheduler):
                     #temporal tiling code based on https://github.com/mayuelala/FollowYourEmoji/blob/main/models/video_pipeline.py
                     # =====================================================
