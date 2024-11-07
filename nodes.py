@@ -182,6 +182,36 @@ class CogVideoLoraSelect:
         print(cog_loras_list)
         return (cog_loras_list,)
 
+class CogVideoXTorchCompileSettings:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": { 
+                "backend": (["inductor","cudagraphs"], {"default": "inductor"}),
+                "fullgraph": ("BOOLEAN", {"default": False, "tooltip": "Enable full graph mode"}),
+                "mode": (["default", "max-autotune", "max-autotune-no-cudagraphs", "reduce-overhead"], {"default": "default"}),
+                "dynamic": ("BOOLEAN", {"default": False, "tooltip": "Enable dynamic mode"}),
+                "dynamo_cache_size_limit": ("INT", {"default": 64, "min": 0, "max": 1024, "step": 1, "tooltip": "torch._dynamo.config.cache_size_limit"}),
+            },
+        }
+    RETURN_TYPES = ("COMPILEARGS",)
+    RETURN_NAMES = ("torch_compile_args",)
+    FUNCTION = "loadmodel"
+    CATEGORY = "MochiWrapper"
+    DESCRIPTION = "torch.compile settings, when connected to the model loader, torch.compile of the selected layers is attempted. Requires Triton and torch 2.5.0 is recommended"
+
+    def loadmodel(self, backend, fullgraph, mode, dynamic, dynamo_cache_size_limit):
+
+        compile_args = {
+            "backend": backend,
+            "fullgraph": fullgraph,
+            "mode": mode,
+            "dynamic": dynamic,
+            "dynamo_cache_size_limit": dynamo_cache_size_limit,
+        }
+
+        return (compile_args, )
+    
 #region TextEncode    
 class CogVideoEncodePrompt:
     @classmethod
@@ -1376,7 +1406,8 @@ NODE_CLASS_MAPPINGS = {
     "ToraEncodeOpticalFlow": ToraEncodeOpticalFlow,
     "CogVideoXFasterCache": CogVideoXFasterCache,
     "CogVideoXFunResizeToClosestBucket": CogVideoXFunResizeToClosestBucket,
-    "CogVideoLatentPreview": CogVideoLatentPreview
+    "CogVideoLatentPreview": CogVideoLatentPreview,
+    "CogVideoXTorchCompileSettings": CogVideoXTorchCompileSettings
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoSampler": "CogVideo Sampler",
@@ -1398,5 +1429,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "ToraEncodeOpticalFlow": "Tora Encode OpticalFlow",
     "CogVideoXFasterCache": "CogVideoX FasterCache",
     "CogVideoXFunResizeToClosestBucket": "CogVideoXFun ResizeToClosestBucket",
-    "CogVideoLatentPreview": "CogVideo LatentPreview"
+    "CogVideoLatentPreview": "CogVideo LatentPreview",
+    "CogVideoXTorchCompileSettings": "CogVideo TorchCompileSettings",
     }

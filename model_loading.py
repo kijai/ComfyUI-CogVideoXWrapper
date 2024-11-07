@@ -59,6 +59,7 @@ class DownloadAndLoadCogVideoModel:
                 "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
                 "lora": ("COGLORA", {"default": None}),
+                "compile_args":("COMPILEARGS", ),
             }
         }
 
@@ -68,7 +69,7 @@ class DownloadAndLoadCogVideoModel:
     CATEGORY = "CogVideoWrapper"
     DESCRIPTION = "Downloads and loads the selected CogVideo model from Huggingface to 'ComfyUI/models/CogVideo'"
 
-    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None):
+    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None, compile_args=None):
         
         check_diffusers_version()
 
@@ -186,17 +187,23 @@ class DownloadAndLoadCogVideoModel:
 
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
-
+            
+        
         # compilation
         if compile == "torch":
-            torch._dynamo.config.suppress_errors = True
-            torch._dynamo.config.cache_size_limit = 64
-  
             pipe.transformer.to(memory_format=torch.channels_last)
-            #pipe.transformer = torch.compile(pipe.transformer, mode="default", fullgraph=False, backend="inductor")
-            for i, block in enumerate(pipe.transformer.transformer_blocks):
-                if "CogVideoXBlock" in str(block):
-                    pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
+            if compile_args is not None:
+                torch._dynamo.config.cache_size_limit = compile_args["dynamo_cache_size_limit"]
+                for i, block in enumerate(pipe.transformer.transformer_blocks):
+                    if "CogVideoXBlock" in str(block):
+                        pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
+            else:
+                for i, block in enumerate(pipe.transformer.transformer_blocks):
+                    if "CogVideoXBlock" in str(block):
+                        pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
+  
+        
+            
         elif compile == "onediff":
             from onediffx import compile_pipe
             os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
