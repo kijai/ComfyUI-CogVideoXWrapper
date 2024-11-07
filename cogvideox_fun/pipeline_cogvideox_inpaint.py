@@ -894,14 +894,19 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
         if tora is not None:
             trajectory_length = tora["video_flow_features"].shape[1]
             logger.info(f"Tora trajectory length: {trajectory_length}")
+            logger.info(f"Tora trajectory shape: {tora["video_flow_features"].shape}")
+            logger.info(f"latents shape: {latents.shape}")
             if trajectory_length != latents.shape[1]:
-                raise ValueError(f"Tora trajectory length {trajectory_length} does not match inpaint_latents count {latents.shape[2]}")
+                raise ValueError(f"Tora trajectory length {trajectory_length} does not match latent count {latents.shape[2]}")
             for module in self.transformer.fuser_list:
                 for param in module.parameters():
                     param.data = param.data.to(device)
 
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
+        from ..latent_preview import prepare_callback
+        callback = prepare_callback(self.transformer, num_inference_steps)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             # for DPM-solver++
@@ -1120,21 +1125,13 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                         )
                     latents = latents.to(prompt_embeds.dtype)
 
-                    # call the callback, if provided
-                    if callback_on_step_end is not None:
-                        callback_kwargs = {}
-                        for k in callback_on_step_end_tensor_inputs:
-                            callback_kwargs[k] = locals()[k]
-                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                        latents = callback_outputs.pop("latents", latents)
-                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
                     if comfyui_progressbar:
-                        pbar.update(1)
+                        if callback is not None:
+                            callback(i, latents.detach()[-1], None, num_inference_steps)
+                        else:
+                            pbar.update(1)
 
         # if output_type == "numpy":
         #     video = self.decode_latents(latents)
