@@ -1,4 +1,13 @@
 # WORK IN PROGRESS
+
+## Update7
+
+- Refactored the Fun version's sampler to accept any resolution, this should make it lot simpler to use with Tora. **BREAKS OLD WORKFLOWS**, old FunSampler nodes need to be remade.
+- The old bucket resizing is now on it's own node (CogVideoXFunResizeToClosestBucket) to keep the functionality, I honestly don't know if it matters at all, but just in case.
+- Fun version's vid2vid is now also in the same node, the old vid2vid node is deprecated.
+- Added support for FasterCache, this trades more VRAM use for speed with slight quality hit, similar to PAB: https://github.com/Vchitect/FasterCache
+- Improved torch.compile support, it actually works now
+
 ## Update6
 
 Initial support for Tora (https://github.com/alibaba/Tora)
@@ -9,9 +18,6 @@ https://huggingface.co/Kijai/CogVideoX-5b-Tora/tree/main
 
 
 https://github.com/user-attachments/assets/d5334237-03dc-48f5-8bec-3ae5998660c6
-
-
-
 
 
 ## Update5
