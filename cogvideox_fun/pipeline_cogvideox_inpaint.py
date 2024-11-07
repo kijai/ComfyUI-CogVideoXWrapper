@@ -894,7 +894,7 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
         if tora is not None:
             trajectory_length = tora["video_flow_features"].shape[1]
             logger.info(f"Tora trajectory length: {trajectory_length}")
-            logger.info(f"Tora trajectory shape: {tora["video_flow_features"].shape}")
+            logger.info(f"Tora trajectory shape: {tora['video_flow_features'].shape}")
             logger.info(f"latents shape: {latents.shape}")
             if trajectory_length != latents.shape[1]:
                 raise ValueError(f"Tora trajectory length {trajectory_length} does not match latent count {latents.shape[2]}")
