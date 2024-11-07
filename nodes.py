@@ -101,7 +101,33 @@ class CogVideoPABConfig:
 
         return (pab_config, )
 
+class CogVideoContextOptions:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "context_schedule": (["uniform_standard", "uniform_looped", "static_standard", "temporal_tiling"],),
+            "context_frames": ("INT", {"default": 48, "min": 2, "max": 100, "step": 1, "tooltip": "Number of pixel frames in the context, NOTE: the latent space has 4 frames in 1"} ),
+            "context_stride": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context stride as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
+            "context_overlap": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context overlap as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
+            "freenoise": ("BOOLEAN", {"default": True, "tooltip": "Shuffle the noise"}),
+            }
+        }
 
+    RETURN_TYPES = ("COGCONTEXT", )
+    RETURN_NAMES = ("context_options",)
+    FUNCTION = "process"
+    CATEGORY = "CogVideoWrapper"
+
+    def process(self, context_schedule, context_frames, context_stride, context_overlap, freenoise):
+        context_options = {
+            "context_schedule":context_schedule,
+            "context_frames":context_frames,
+            "context_stride":context_stride,
+            "context_overlap":context_overlap,
+            "freenoise":freenoise
+        }
+
+        return (context_options,)
 
 class CogVideoTransformerEdit:
     @classmethod
@@ -155,7 +181,8 @@ class CogVideoLoraSelect:
         cog_loras_list.append(cog_lora)
         print(cog_loras_list)
         return (cog_loras_list,)
-    
+
+#region TextEncode    
 class CogVideoEncodePrompt:
     @classmethod
     def INPUT_TYPES(s):
@@ -257,8 +284,8 @@ class CogVideoTextEncode:
             }
         }
 
-    RETURN_TYPES = ("CONDITIONING",)
-    RETURN_NAMES = ("conditioning",)
+    RETURN_TYPES = ("CONDITIONING", "CLIP",)
+    RETURN_NAMES = ("conditioning", "clip")
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
@@ -279,7 +306,7 @@ class CogVideoTextEncode:
         if force_offload:
             clip.cond_stage_model.to(offload_device)
 
-        return (embeds, )
+        return (embeds, clip, )
     
 class CogVideoTextEncodeCombine:
     @classmethod
@@ -311,7 +338,8 @@ class CogVideoTextEncodeCombine:
             raise ValueError("Invalid combination mode")
 
         return (embeds, )
-    
+
+#region ImageEncode    
 class CogVideoImageEncode:
     @classmethod
     def INPUT_TYPES(s):
@@ -473,7 +501,8 @@ class CogVideoImageInterpolationEncode:
             vae.to(offload_device)
         
         return ({"samples": final_latents}, )
-    
+
+#region Tora    
 from .tora.traj_utils import process_traj, scale_traj_list_to_256
 from torchvision.utils import flow_to_image
 
@@ -630,8 +659,94 @@ class ToraEncodeOpticalFlow:
         }
 
         return (tora, )   
-        
+    
+def add_noise_to_reference_video(image, ratio=None):
+    if ratio is None:
+        sigma = torch.normal(mean=-3.0, std=0.5, size=(image.shape[0],)).to(image.device)
+        sigma = torch.exp(sigma).to(image.dtype)
+    else:
+        sigma = torch.ones((image.shape[0],)).to(image.device, image.dtype) * ratio
+    
+    image_noise = torch.randn_like(image) * sigma[:, None, None, None, None]
+    image_noise = torch.where(image==-1, torch.zeros_like(image), image_noise)
+    image = image + image_noise
+    return image
 
+class CogVideoControlImageEncode:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "pipeline": ("COGVIDEOPIPE",),
+            "control_video": ("IMAGE", ),
+            "base_resolution": ("INT", {"min": 64, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
+            "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
+            "noise_aug_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001}),
+            },
+        }
+
+    RETURN_TYPES = ("COGCONTROL_LATENTS", "INT", "INT",)
+    RETURN_NAMES = ("control_latents", "width", "height")
+    FUNCTION = "encode"
+    CATEGORY = "CogVideoWrapper"
+
+    def encode(self, pipeline, control_video, base_resolution, enable_tiling, noise_aug_strength=0.0563):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+
+        B, H, W, C = control_video.shape
+
+        vae = pipeline["pipe"].vae
+        vae.enable_slicing()
+
+        if enable_tiling:
+            from .mz_enable_vae_encode_tiling import enable_vae_encode_tiling
+            enable_vae_encode_tiling(vae)
+
+        if not pipeline["cpu_offloading"]:
+            vae.to(device)
+
+        # Count most suitable height and width
+        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
+
+        control_video = np.array(control_video.cpu().numpy() * 255, np.uint8)
+        original_width, original_height = Image.fromarray(control_video[0]).size
+
+        closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
+        height, width = [int(x / 16) * 16 for x in closest_size]
+        log.info(f"Closest bucket size: {width}x{height}")
+        
+        video_length = int((B - 1) // vae.config.temporal_compression_ratio * vae.config.temporal_compression_ratio) + 1 if B != 1 else 1
+        input_video, input_video_mask, clip_image = get_video_to_video_latent(control_video, video_length=video_length, sample_size=(height, width))
+
+        control_video = pipeline["pipe"].image_processor.preprocess(rearrange(input_video, "b c f h w -> (b f) c h w"), height=height, width=width) 
+        control_video = control_video.to(dtype=torch.float32)
+        control_video = rearrange(control_video, "(b f) c h w -> b c f h w", f=video_length)
+
+        masked_image = control_video.to(device=device, dtype=vae.dtype)
+        if noise_aug_strength > 0:
+            masked_image = add_noise_to_reference_video(masked_image, ratio=noise_aug_strength)
+        bs = 1
+        new_mask_pixel_values = []
+        for i in range(0, masked_image.shape[0], bs):
+            mask_pixel_values_bs = masked_image[i : i + bs]
+            mask_pixel_values_bs = vae.encode(mask_pixel_values_bs)[0]
+            mask_pixel_values_bs = mask_pixel_values_bs.mode()
+            new_mask_pixel_values.append(mask_pixel_values_bs)
+        masked_image_latents = torch.cat(new_mask_pixel_values, dim = 0)
+        masked_image_latents = masked_image_latents * vae.config.scaling_factor      
+
+        vae.to(offload_device)
+
+        control_latents = {
+            "latents": masked_image_latents,
+            "num_frames" : B,
+            "height" : height,
+            "width" : width,
+        }
+        
+        return (control_latents, width, height)
+            
+#region FasterCache
 class CogVideoXFasterCache:
     @classmethod
     def INPUT_TYPES(s):
@@ -659,7 +774,8 @@ class CogVideoXFasterCache:
             "cache_device" : device if cache_device == "main_device" else offload_device
         }
         return (fastercache,)
-    
+
+#region Sampler    
 class CogVideoSampler:
     @classmethod
     def INPUT_TYPES(s):
@@ -782,7 +898,43 @@ class CogVideoSampler:
         mm.soft_empty_cache()
 
         return (pipeline, {"samples": latents})
+
+class CogVideoControlNet:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {"required": {
+            "controlnet": ("COGVIDECONTROLNETMODEL",),
+            "images": ("IMAGE", ),
+            "control_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
+            "control_start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+            "control_end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+            },
+        }
+
+    RETURN_TYPES = ("COGVIDECONTROLNET",)
+    RETURN_NAMES = ("cogvideo_controlnet",)
+    FUNCTION = "encode"
+    CATEGORY = "CogVideoWrapper"
+
+    def encode(self, controlnet, images, control_strength, control_start_percent, control_end_percent):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+
+        B, H, W, C = images.shape
+
+        control_frames = images.permute(0, 3, 1, 2).unsqueeze(0) * 2 - 1
+      
+        controlnet = {
+            "control_model": controlnet,
+            "control_frames": control_frames,
+            "control_weights": control_strength,
+            "control_start": control_start_percent,
+            "control_end": control_end_percent,
+        }
+        
+        return (controlnet,)
     
+#region VideoDecode    
 class CogVideoDecode:
     @classmethod
     def INPUT_TYPES(s):
@@ -878,7 +1030,8 @@ class CogVideoXFunResizeToClosestBucket:
         resized_images = resized_images.movedim(1,-1)
         
         return (resized_images, width, height)
-    
+
+#region FunSamplers
 class CogVideoXFunSampler:
     @classmethod
     def INPUT_TYPES(s):
@@ -888,7 +1041,8 @@ class CogVideoXFunSampler:
                 "positive": ("CONDITIONING", ),
                 "negative": ("CONDITIONING", ),
                 "video_length": ("INT", {"default": 49, "min": 5, "max": 2048, "step": 4}),
-                "base_resolution": ("INT", {"min": 64, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
+                "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 8}),
+                "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 8}),
                 "seed": ("INT", {"default": 43, "min": 0, "max": 0xffffffffffffffff}),
                 "steps": ("INT", {"default": 50, "min": 1, "max": 200, "step": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 1.0, "max": 20.0, "step": 0.01}),
@@ -897,7 +1051,6 @@ class CogVideoXFunSampler:
             "optional":{
                 "start_img": ("IMAGE",),
                 "end_img": ("IMAGE",),
-                "opt_empty_latent": ("LATENT",),
                 "noise_aug_strength": ("FLOAT", {"default": 0.0563, "min": 0.0, "max": 1.0, "step": 0.001}),
                 "context_options": ("COGCONTEXT", ),
                 "tora_trajectory": ("TORAFEATURES", ),
@@ -912,8 +1065,8 @@ class CogVideoXFunSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline,  positive, negative, video_length, base_resolution, seed, steps, cfg, scheduler, 
-                start_img=None, end_img=None, opt_empty_latent=None, noise_aug_strength=0.0563, context_options=None, fastercache=None, 
+    def process(self, pipeline,  positive, negative, video_length, width, height, seed, steps, cfg, scheduler, 
+                start_img=None, end_img=None, noise_aug_strength=0.0563, context_options=None, fastercache=None, 
                 tora_trajectory=None, vid2vid_images=None, vid2vid_denoise=1.0):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
@@ -929,23 +1082,13 @@ class CogVideoXFunSampler:
 
         mm.soft_empty_cache()
 
-        aspect_ratio_sample_size = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
         #vid2vid
         if vid2vid_images is not None:
             validation_video = np.array(vid2vid_images.cpu().numpy() * 255, np.uint8)
-            original_width, original_height = Image.fromarray(validation_video[0]).size
         #img2vid
         elif start_img is not None:
             start_img = [to_pil(_start_img) for _start_img in start_img] if start_img is not None else None
-            end_img = [to_pil(_end_img) for _end_img in end_img] if end_img is not None else None
-            # Count most suitable height and width
-            original_width, original_height = start_img[0].size if type(start_img) is list else Image.open(start_img).size
-        else:
-            original_width = opt_empty_latent["samples"][0].shape[-1] * 8
-            original_height = opt_empty_latent["samples"][0].shape[-2] * 8
-        closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
-        height, width = [int(x / 16) * 16 for x in closest_size]
-        log.info(f"Closest bucket size: {width}x{height}")
+            end_img = [to_pil(_end_img) for _end_img in end_img] if end_img is not None else None       
         
         # Load Sampler
         if context_options is not None and context_options["context_schedule"] == "temporal_tiling":
@@ -1045,156 +1188,6 @@ class CogVideoXFunVid2VidSampler:
     DEPRECATED = True
     def process(self):
         return ()
-
-def add_noise_to_reference_video(image, ratio=None):
-    if ratio is None:
-        sigma = torch.normal(mean=-3.0, std=0.5, size=(image.shape[0],)).to(image.device)
-        sigma = torch.exp(sigma).to(image.dtype)
-    else:
-        sigma = torch.ones((image.shape[0],)).to(image.device, image.dtype) * ratio
-    
-    image_noise = torch.randn_like(image) * sigma[:, None, None, None, None]
-    image_noise = torch.where(image==-1, torch.zeros_like(image), image_noise)
-    image = image + image_noise
-    return image
-
-class CogVideoControlImageEncode:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {
-            "pipeline": ("COGVIDEOPIPE",),
-            "control_video": ("IMAGE", ),
-            "base_resolution": ("INT", {"min": 64, "max": 1280, "step": 64, "default": 512, "tooltip": "Base resolution, closest training data bucket resolution is chosen based on the selection."}),
-            "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
-            "noise_aug_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001}),
-            },
-        }
-
-    RETURN_TYPES = ("COGCONTROL_LATENTS", "INT", "INT",)
-    RETURN_NAMES = ("control_latents", "width", "height")
-    FUNCTION = "encode"
-    CATEGORY = "CogVideoWrapper"
-
-    def encode(self, pipeline, control_video, base_resolution, enable_tiling, noise_aug_strength=0.0563):
-        device = mm.get_torch_device()
-        offload_device = mm.unet_offload_device()
-
-        B, H, W, C = control_video.shape
-
-        vae = pipeline["pipe"].vae
-        vae.enable_slicing()
-
-        if enable_tiling:
-            from .mz_enable_vae_encode_tiling import enable_vae_encode_tiling
-            enable_vae_encode_tiling(vae)
-
-        if not pipeline["cpu_offloading"]:
-            vae.to(device)
-
-        # Count most suitable height and width
-        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
-
-        control_video = np.array(control_video.cpu().numpy() * 255, np.uint8)
-        original_width, original_height = Image.fromarray(control_video[0]).size
-
-        closest_size, closest_ratio = get_closest_ratio(original_height, original_width, ratios=aspect_ratio_sample_size)
-        height, width = [int(x / 16) * 16 for x in closest_size]
-        log.info(f"Closest bucket size: {width}x{height}")
-        
-        video_length = int((B - 1) // vae.config.temporal_compression_ratio * vae.config.temporal_compression_ratio) + 1 if B != 1 else 1
-        input_video, input_video_mask, clip_image = get_video_to_video_latent(control_video, video_length=video_length, sample_size=(height, width))
-
-        control_video = pipeline["pipe"].image_processor.preprocess(rearrange(input_video, "b c f h w -> (b f) c h w"), height=height, width=width) 
-        control_video = control_video.to(dtype=torch.float32)
-        control_video = rearrange(control_video, "(b f) c h w -> b c f h w", f=video_length)
-
-        masked_image = control_video.to(device=device, dtype=vae.dtype)
-        if noise_aug_strength > 0:
-            masked_image = add_noise_to_reference_video(masked_image, ratio=noise_aug_strength)
-        bs = 1
-        new_mask_pixel_values = []
-        for i in range(0, masked_image.shape[0], bs):
-            mask_pixel_values_bs = masked_image[i : i + bs]
-            mask_pixel_values_bs = vae.encode(mask_pixel_values_bs)[0]
-            mask_pixel_values_bs = mask_pixel_values_bs.mode()
-            new_mask_pixel_values.append(mask_pixel_values_bs)
-        masked_image_latents = torch.cat(new_mask_pixel_values, dim = 0)
-        masked_image_latents = masked_image_latents * vae.config.scaling_factor      
-
-        vae.to(offload_device)
-
-        control_latents = {
-            "latents": masked_image_latents,
-            "num_frames" : B,
-            "height" : height,
-            "width" : width,
-        }
-        
-        return (control_latents, width, height)
-    
-class CogVideoControlNet:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {
-            "controlnet": ("COGVIDECONTROLNETMODEL",),
-            "images": ("IMAGE", ),
-            "control_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
-            "control_start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-            "control_end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-            },
-        }
-
-    RETURN_TYPES = ("COGVIDECONTROLNET",)
-    RETURN_NAMES = ("cogvideo_controlnet",)
-    FUNCTION = "encode"
-    CATEGORY = "CogVideoWrapper"
-
-    def encode(self, controlnet, images, control_strength, control_start_percent, control_end_percent):
-        device = mm.get_torch_device()
-        offload_device = mm.unet_offload_device()
-
-        B, H, W, C = images.shape
-
-        control_frames = images.permute(0, 3, 1, 2).unsqueeze(0) * 2 - 1
-      
-        controlnet = {
-            "control_model": controlnet,
-            "control_frames": control_frames,
-            "control_weights": control_strength,
-            "control_start": control_start_percent,
-            "control_end": control_end_percent,
-        }
-        
-        return (controlnet,)
-
-    
-class CogVideoContextOptions:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {
-            "context_schedule": (["uniform_standard", "uniform_looped", "static_standard", "temporal_tiling"],),
-            "context_frames": ("INT", {"default": 48, "min": 2, "max": 100, "step": 1, "tooltip": "Number of pixel frames in the context, NOTE: the latent space has 4 frames in 1"} ),
-            "context_stride": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context stride as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
-            "context_overlap": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context overlap as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
-            "freenoise": ("BOOLEAN", {"default": True, "tooltip": "Shuffle the noise"}),
-            }
-        }
-
-    RETURN_TYPES = ("COGCONTEXT", )
-    RETURN_NAMES = ("context_options",)
-    FUNCTION = "process"
-    CATEGORY = "CogVideoWrapper"
-
-    def process(self, context_schedule, context_frames, context_stride, context_overlap, freenoise):
-        context_options = {
-            "context_schedule":context_schedule,
-            "context_frames":context_frames,
-            "context_stride":context_stride,
-            "context_overlap":context_overlap,
-            "freenoise":freenoise
-        }
-
-        return (context_options,)
             
 class CogVideoXFunControlSampler:
     @classmethod
