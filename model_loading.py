@@ -33,7 +33,7 @@ class CogVideoLoraSelect:
             "required": {
                "lora": (folder_paths.get_filename_list("cogvideox_loras"), 
                 {"tooltip": "LORA models are expected to be in ComfyUI/models/CogVideo/loras with .safetensors extension"}),
-                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
+                "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
             },
             "optional": {
                 "prev_lora":("COGLORA", {"default": None, "tooltip": "For loading multiple LoRAs"}),
@@ -230,7 +230,7 @@ class DownloadAndLoadCogVideoModel:
                 for l in lora:
                     pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
                 if fuse:
-                    pipe.fuse_lora(lora_scale=1 / lora_rank, components=["transformer"])
+                    pipe.fuse_lora(lora_scale=lora[-1]["strength"] / lora_rank, components=["transformer"])
 
         #fp8
         if fp8_transformer == "enabled" or fp8_transformer == "fastmode":
