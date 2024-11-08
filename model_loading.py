@@ -4,6 +4,8 @@ import torch.nn as nn
 import json
 import folder_paths
 import comfy.model_management as mm
+from .utils import check_diffusers_version, remove_specific_blocks, log
+check_diffusers_version()
 
 from diffusers.models import AutoencoderKLCogVideoX
 from diffusers.schedulers import CogVideoXDDIMScheduler
@@ -20,7 +22,6 @@ from .cogvideox_fun.pipeline_cogvideox_control import CogVideoX_Fun_Pipeline_Con
 
 from .videosys.cogvideox_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelPAB
 
-from .utils import check_diffusers_version, remove_specific_blocks, log
 from comfy.utils import load_torch_file
 
 script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -311,7 +312,6 @@ class DownloadAndLoadCogVideoGGUFModel:
                 "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
                 "compile": (["disabled","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
-              
             }
         }
 
