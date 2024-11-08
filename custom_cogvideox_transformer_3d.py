@@ -31,6 +31,7 @@ from diffusers.models.embeddings import CogVideoXPatchEmbed, TimestepEmbedding, 
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.normalization import AdaLayerNorm, CogVideoXLayerNormZero
+from diffusers.loaders import PeftAdapterMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -361,7 +362,7 @@ class CogVideoXBlock(nn.Module):
         return hidden_states, encoder_hidden_states
 
 
-class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin):
+class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     """
     A Transformer model for video-like data in [CogVideoX](https://github.com/THUDM/CogVideo).
 

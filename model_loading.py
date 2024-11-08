@@ -25,6 +25,42 @@ from comfy.utils import load_torch_file
 
 script_directory = os.path.dirname(os.path.abspath(__file__))
 
+class CogVideoLoraSelect:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+               "lora": (folder_paths.get_filename_list("cogvideox_loras"), 
+                {"tooltip": "LORA models are expected to be in ComfyUI/models/CogVideo/loras with .safetensors extension"}),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
+            },
+            "optional": {
+                "prev_lora":("COGLORA", {"default": None, "tooltip": "For loading multiple LoRAs"}),
+                "fuse_lora": ("BOOLEAN", {"default": False, "tooltip": "Fuse the LoRA weights into the transformer"}),
+            }
+        }
+
+    RETURN_TYPES = ("COGLORA",)
+    RETURN_NAMES = ("lora", )
+    FUNCTION = "getlorapath"
+    CATEGORY = "CogVideoWrapper"
+
+    def getlorapath(self, lora, strength, prev_lora=None, fuse_lora=False):
+        cog_loras_list = []
+
+        cog_lora = {
+            "path": folder_paths.get_full_path("cogvideox_loras", lora),
+            "strength": strength,
+            "name": lora.split(".")[0],
+            "fuse_lora": fuse_lora
+        }
+        if prev_lora is not None:
+            cog_loras_list.extend(prev_lora)
+            
+        cog_loras_list.append(cog_lora)
+        print(cog_loras_list)
+        return (cog_loras_list,)
+
 class DownloadAndLoadCogVideoModel:
     @classmethod
     def INPUT_TYPES(s):
@@ -143,17 +179,6 @@ class DownloadAndLoadCogVideoModel:
         
         transformer = transformer.to(dtype).to(offload_device)
 
-        #LoRAs
-        if lora is not None:
-            from .lora_utils import merge_lora, load_lora_into_transformer
-            if "fun" in model.lower():
-                for l in lora:
-                    log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
-                    transformer = merge_lora(transformer, l["path"], l["strength"])
-            else:
-                transformer = load_lora_into_transformer(lora, transformer)
-                        
-                
         if block_edit is not None:
             transformer = remove_specific_blocks(transformer, block_edit)
         
@@ -183,7 +208,40 @@ class DownloadAndLoadCogVideoModel:
             vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
             pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)
             if "cogvideox-2b-img2vid" in model:
-                pipe.input_with_padding = False 
+                pipe.input_with_padding = False
+        
+        #LoRAs
+        if lora is not None:
+            from .lora_utils import merge_lora#, load_lora_into_transformer
+            if "fun" in model.lower():
+                for l in lora:
+                    log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
+                    transformer = merge_lora(transformer, l["path"], l["strength"])
+            else:
+                adapter_list = []
+                adapter_weights = []
+                for l in lora:
+                    if l["fuse_lora"]:
+                        fuse = True
+                    lora_sd = load_torch_file(l["path"])             
+                    for key, val in lora_sd.items():
+                        if "lora_B" in key:
+                            lora_rank = val.shape[1]
+                            break
+                    log.info(f"Merging rank {lora_rank} LoRA weights from {l['path']} with strength {l['strength']}")
+                    adapter_name = l['path'].split("/")[-1].split(".")[0]
+                    adapter_weight = l['strength']
+                    pipe.load_lora_weights(l['path'], weight_name=l['path'].split("/")[-1], lora_rank=lora_rank, adapter_name=adapter_name)
+                    
+                    #transformer = load_lora_into_transformer(lora, transformer)
+                    adapter_list.append(adapter_name)
+                    adapter_weights.append(adapter_weight)
+                for l in lora:
+                    pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
+                if fuse:
+                    pipe.fuse_lora(lora_scale=1 / lora_rank, components=["transformer"])
+        
+        
 
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
@@ -214,7 +272,7 @@ class DownloadAndLoadCogVideoModel:
             options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
             ignores=["vae"],
             fuse_qkv_projections=True if pab_config is None else False,
-            )
+            )          
 
         pipeline = {
             "pipe": pipe,
@@ -567,10 +625,12 @@ NODE_CLASS_MAPPINGS = {
     "DownloadAndLoadCogVideoGGUFModel": DownloadAndLoadCogVideoGGUFModel,
     "DownloadAndLoadCogVideoControlNet": DownloadAndLoadCogVideoControlNet,
     "DownloadAndLoadToraModel": DownloadAndLoadToraModel,
+    "CogVideoLoraSelect": CogVideoLoraSelect,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
     "DownloadAndLoadCogVideoGGUFModel": "(Down)load CogVideo GGUF Model",
     "DownloadAndLoadCogVideoControlNet": "(Down)load CogVideo ControlNet",
     "DownloadAndLoadToraModel": "(Down)load Tora Model",
+    "CogVideoLoraSelect": "CogVideo LoraSelect",
     }

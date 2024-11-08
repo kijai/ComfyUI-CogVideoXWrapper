@@ -7,3 +7,4 @@ master_ip
 logs/
 *.DS_Store
 .idea
+*.pt

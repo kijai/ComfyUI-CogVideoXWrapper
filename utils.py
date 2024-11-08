@@ -7,7 +7,7 @@ log = logging.getLogger(__name__)
 def check_diffusers_version():
     try:
         version = importlib.metadata.version('diffusers')
-        required_version = '0.30.3'
+        required_version = '0.31.0'
         if version < required_version:
             raise AssertionError(f"diffusers version {version} is installed, but version {required_version} or higher is required.")
     except importlib.metadata.PackageNotFoundError:

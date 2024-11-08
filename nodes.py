@@ -148,40 +148,6 @@ class CogVideoTransformerEdit:
         log.info(f"Blocks selected for removal: {blocks_to_remove}")
         return (blocks_to_remove,)
 
-class CogVideoLoraSelect:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-               "lora": (folder_paths.get_filename_list("cogvideox_loras"), 
-                {"tooltip": "LORA models are expected to be in ComfyUI/models/CogVideo/loras with .safetensors extension"}),
-                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
-            },
-            "optional": {
-                "prev_lora":("COGLORA", {"default": None, "tooltip": "For loading multiple LoRAs"}),
-            }
-        }
-
-    RETURN_TYPES = ("COGLORA",)
-    RETURN_NAMES = ("lora", )
-    FUNCTION = "getlorapath"
-    CATEGORY = "CogVideoWrapper"
-
-    def getlorapath(self, lora, strength, prev_lora=None):
-        cog_loras_list = []
-
-        cog_lora = {
-            "path": folder_paths.get_full_path("cogvideox_loras", lora),
-            "strength": strength,
-            "name": lora.split(".")[0],
-        }
-        if prev_lora is not None:
-            cog_loras_list.extend(prev_lora)
-            
-        cog_loras_list.append(cog_lora)
-        print(cog_loras_list)
-        return (cog_loras_list,)
-
 class CogVideoXTorchCompileSettings:
     @classmethod
     def INPUT_TYPES(s):
@@ -1399,7 +1365,6 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoPABConfig": CogVideoPABConfig,
     "CogVideoTransformerEdit": CogVideoTransformerEdit,
     "CogVideoControlImageEncode": CogVideoControlImageEncode,
-    "CogVideoLoraSelect": CogVideoLoraSelect,
     "CogVideoContextOptions": CogVideoContextOptions,
     "CogVideoControlNet": CogVideoControlNet,
     "ToraEncodeTrajectory": ToraEncodeTrajectory,
@@ -1423,7 +1388,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoPABConfig": "CogVideo PABConfig",
     "CogVideoTransformerEdit": "CogVideo TransformerEdit",
     "CogVideoControlImageEncode": "CogVideo Control ImageEncode",
-    "CogVideoLoraSelect": "CogVideo LoraSelect",
     "CogVideoContextOptions": "CogVideo Context Options",
     "ToraEncodeTrajectory": "Tora Encode Trajectory",
     "ToraEncodeOpticalFlow": "Tora Encode OpticalFlow",

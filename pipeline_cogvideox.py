@@ -26,6 +26,7 @@ from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
 from diffusers.models.embeddings import get_3d_rotary_pos_embed
+from diffusers.loaders import CogVideoXLoraLoaderMixin
 
 from .custom_cogvideox_transformer_3d import CogVideoXTransformer3DModel
 
@@ -113,7 +114,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-class CogVideoXPipeline(VideoSysPipeline):
+class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
 
