@@ -21,6 +21,8 @@ import torch.nn.functional as F
 
 import numpy as np
 from einops import rearrange
+from functools import reduce
+from operator import mul
 
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.utils import logging
@@ -32,6 +34,7 @@ from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.normalization import AdaLayerNorm, CogVideoXLayerNormZero
 from diffusers.loaders import PeftAdapterMixin
+from .embeddings import CogVideoX1_1PatchEmbed
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -61,6 +64,14 @@ def fft(tensor):
 
     return low_freq_fft, high_freq_fft
 
+def rotate_half(x):
+    x = rearrange(x, "... (d r) -> ... d r", r=2)
+    x1, x2 = x.unbind(dim=-1)
+    x = torch.stack((-x2, x1), dim=-1)
+    return rearrange(x, "... d r -> ... (d r)")
+
+
+
 class CogVideoXAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention for the CogVideoX model. It applies a rotary embedding on
@@ -70,6 +81,16 @@ class CogVideoXAttnProcessor2_0:
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("CogVideoXAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+    def rotary(self, t, rope_args):
+        def reshape_freq(freqs):
+            freqs = freqs[: rope_args["T"], : rope_args["H"], : rope_args["W"]].contiguous()
+            freqs = rearrange(freqs, "t h w d -> (t h w) d")
+            freqs = freqs.unsqueeze(0).unsqueeze(0)
+            return freqs
+        freqs_cos = reshape_freq(self.freqs_cos).to(t.dtype)
+        freqs_sin = reshape_freq(self.freqs_sin).to(t.dtype)
+
+        return t * freqs_cos + rotate_half(t) * freqs_sin
     @torch.compiler.disable()
     def __call__(
         self,
@@ -78,6 +99,7 @@ class CogVideoXAttnProcessor2_0:
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
+        rope_args: Optional[dict] = None
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
 
@@ -107,13 +129,33 @@ class CogVideoXAttnProcessor2_0:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
+        
+
         # Apply RoPE if needed
         if image_rotary_emb is not None:
+            self.freqs_cos = image_rotary_emb[0]
+            self.freqs_sin = image_rotary_emb[1]
+            print("rope args", rope_args) #{'T': 6, 'H': 30, 'W': 45, 'seq_length': 8775}
+            print("freqs_cos", self.freqs_cos.shape) #torch.Size([13, 30, 45, 64])
+            print("freqs_sin", self.freqs_sin.shape)
+            
+            
             from diffusers.models.embeddings import apply_rotary_emb
 
-            query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
+            #query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
+            query = torch.cat(
+                (query[:, :, : text_seq_length], 
+                    self.rotary(query[:, :, text_seq_length:], 
+                    rope_args)), 
+                    dim=2)
+
             if not attn.is_cross_attention:
-                key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
+                #key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
+                key = torch.cat(
+                    (key[ :, :, : text_seq_length], 
+                    self.rotary(key[:, :, text_seq_length:], 
+                    rope_args)), 
+                    dim=2)
 
         if SAGEATTN_IS_AVAILABLE:
             hidden_states = sageattn(query, key, value, is_causal=False)
@@ -303,6 +345,7 @@ class CogVideoXBlock(nn.Module):
         fastercache_counter=0,
         fastercache_start_step=15,
         fastercache_device="cuda:0",
+        rope_args=None
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
         # norm & modulate
@@ -335,7 +378,7 @@ class CogVideoXBlock(nn.Module):
             attn_hidden_states, attn_encoder_hidden_states = self.attn1(
                 hidden_states=norm_hidden_states,
                 encoder_hidden_states=norm_encoder_hidden_states,
-                image_rotary_emb=image_rotary_emb,
+                image_rotary_emb=image_rotary_emb, rope_args=rope_args
             )
             if fastercache_counter == fastercache_start_step:
                 self.cached_hidden_states = [attn_hidden_states.to(fastercache_device), attn_hidden_states.to(fastercache_device)]
@@ -458,12 +501,12 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             )
 
         # 1. Patch embedding
-        self.patch_embed = CogVideoXPatchEmbed(
+        self.patch_embed = CogVideoX1_1PatchEmbed(
             patch_size=patch_size,
             in_channels=in_channels,
             embed_dim=inner_dim,
             text_embed_dim=text_embed_dim,
-            bias=True,
+            #bias=True,
             sample_width=sample_width,
             sample_height=sample_height,
             sample_frames=sample_frames,
@@ -507,7 +550,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             norm_eps=norm_eps,
             chunk_dim=1,
         )
-        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * out_channels)
+        self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * patch_size * out_channels)
 
         self.gradient_checkpointing = False
 
@@ -635,6 +678,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
+        p = self.config.patch_size
+        print("p", p)
 
         # 1. Time embedding
         timesteps = timestep
@@ -645,6 +690,18 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=hidden_states.dtype)
         emb = self.time_embedding(t_emb, timestep_cond)
+
+        # RoPE
+        seq_length = num_frames * height * width // reduce(mul, [p, p, p])
+        rope_T = num_frames // p
+        rope_H = height // p
+        rope_W = width // p
+        rope_args = {
+            "T": rope_T,
+            "H": rope_H,
+            "W": rope_W,
+            "seq_length": seq_length,
+        }
 
         # 2. Patch embedding
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
@@ -696,7 +753,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             # Note: we use `-1` instead of `channels`:
             #   - It is okay to `channels` use for CogVideoX-2b and CogVideoX-5b (number of input channels is equal to output channels)
             #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
-            p = self.config.patch_size
+            
             output = hidden_states.reshape(1, num_frames, height // p, width // p, -1, p, p)
             output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
             
@@ -728,7 +785,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     video_flow_feature=video_flow_features[i] if video_flow_features is not None else None,
                     fuser = self.fuser_list[i] if self.fuser_list is not None else None,
                     fastercache_counter = self.fastercache_counter,
-                    fastercache_device = self.fastercache_device
+                    fastercache_device = self.fastercache_device,
+                    rope_args=rope_args
                 )
 
             if (controlnet_states is not None) and (i < len(controlnet_states)):
