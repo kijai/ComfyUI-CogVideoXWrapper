@@ -71,7 +71,7 @@ class CogVideoXAttnProcessor2_0:
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("CogVideoXAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
         
-    @torch.compiler.disable()
+    #@torch.compiler.disable()
     def __call__(
         self,
         attn: Attention,

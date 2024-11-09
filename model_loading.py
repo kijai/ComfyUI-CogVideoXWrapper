@@ -262,7 +262,10 @@ class DownloadAndLoadCogVideoModel:
                 for l in lora:
                     pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
                 if fuse:
-                    pipe.fuse_lora(lora_scale=1 / lora_rank, components=["transformer"])
+                    lora_scale = 1
+                    if "dimensionx" in lora[-1]["path"].lower():
+                        lora_scale = lora_scale / lora_rank
+                    pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
         
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
