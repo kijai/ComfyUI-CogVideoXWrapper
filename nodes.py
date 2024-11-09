@@ -861,6 +861,7 @@ class CogVideoSampler:
             pipe.transformer.fastercache_counter = 0
 
         autocastcondition = not pipeline["onediff"] or not dtype == torch.float32
+        autocastcondition = False ##todo
         autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
         with autocast_context:
             latents = pipeline["pipe"](

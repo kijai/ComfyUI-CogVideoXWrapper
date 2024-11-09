@@ -261,7 +261,7 @@ class DownloadAndLoadCogVideoModel:
                     if "CogVideoXBlock" in str(block):
                         pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
   
-        
+      
             
         elif compile == "onediff":
             from onediffx import compile_pipe
@@ -274,7 +274,7 @@ class DownloadAndLoadCogVideoModel:
             ignores=["vae"],
             fuse_qkv_projections=True if pab_config is None else False,
             )          
-
+        
         pipeline = {
             "pipe": pipe,
             "dtype": dtype,
@@ -452,6 +452,8 @@ class DownloadAndLoadCogVideoGGUFModel:
 
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
+
+
 
         pipeline = {
             "pipe": pipe,
