@@ -317,18 +317,17 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         width: int,
         num_frames: int,
         device: torch.device,
-        start_frame: int = None,
-        end_frame: int = None,
         ) -> Tuple[torch.Tensor, torch.Tensor]:
         grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
         grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+
         p = self.transformer.config.patch_size
         p_t = self.transformer.config.patch_size_t or 1
 
         base_size_width = self.transformer.config.sample_width // p
         base_size_height = self.transformer.config.sample_height // p
         base_num_frames = (num_frames + p_t - 1) // p_t
-
+    
         grid_crops_coords = get_resize_crop_region_for_grid(
             (grid_height, grid_width), base_size_width, base_size_height
         )
@@ -336,19 +335,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             embed_dim=self.transformer.config.attention_head_dim,
             crops_coords=grid_crops_coords,
             grid_size=(grid_height, grid_width),
-            temporal_size=base_num_frames,
-            use_real=True,
+            temporal_size=base_num_frames
         )
-        
-        if start_frame is not None:
-            freqs_cos = freqs_cos.view(num_frames, grid_height * grid_width, -1)
-            freqs_sin = freqs_sin.view(num_frames, grid_height * grid_width, -1)
-
-            freqs_cos = freqs_cos[start_frame:end_frame]
-            freqs_sin = freqs_sin[start_frame:end_frame]
-
-            freqs_cos = freqs_cos.view(-1, freqs_cos.shape[-1])
-            freqs_sin = freqs_sin.view(-1, freqs_sin.shape[-1])
 
         freqs_cos = freqs_cos.to(device=device)
         freqs_sin = freqs_sin.to(device=device)
@@ -535,13 +523,6 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 6.5. Create rotary embeds if required
-        image_rotary_emb = (
-            self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device)
-            if self.transformer.config.use_rotary_positional_embeddings
-            else None
-        )
-
         # masks
         if self.original_mask is not None:
             mask = self.original_mask.to(device)
@@ -579,7 +560,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             use_temporal_tiling = False
             use_context_schedule = False
             logger.info("Temporal tiling and context schedule disabled")
-            # 7. Create rotary embeds if required
+            # 8.5. Create rotary embeds if required
             image_rotary_emb = (
                 self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device)
                 if self.transformer.config.use_rotary_positional_embeddings
@@ -882,7 +863,6 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                         controlnet_states=controlnet_states,
                         controlnet_weights=control_weights,
                         video_flow_features=video_flow_features if (tora is not None and tora["start_percent"] <= current_step_percentage <= tora["end_percent"]) else None,
-
                     )[0]
                     noise_pred = noise_pred.float()
 

@@ -60,7 +60,7 @@ class CogVideoLoraSelect:
         cog_loras_list.append(cog_lora)
         print(cog_loras_list)
         return (cog_loras_list,)
-
+#region DownloadAndLoadCogVideoModel
 class DownloadAndLoadCogVideoModel:
     @classmethod
     def INPUT_TYPES(s):
@@ -259,12 +259,9 @@ class DownloadAndLoadCogVideoModel:
                 if fuse:
                     pipe.fuse_lora(lora_scale=1 / lora_rank, components=["transformer"])
         
-        
-
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
             
-        
         # compilation
         if compile == "torch":
             pipe.transformer.to(memory_format=torch.channels_last)
@@ -277,8 +274,6 @@ class DownloadAndLoadCogVideoModel:
                 for i, block in enumerate(pipe.transformer.transformer_blocks):
                     if "CogVideoXBlock" in str(block):
                         pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
-  
-      
             
         elif compile == "onediff":
             from onediffx import compile_pipe
@@ -303,7 +298,7 @@ class DownloadAndLoadCogVideoModel:
         }
 
         return (pipeline,)
-
+#region GGUF
 class DownloadAndLoadCogVideoGGUFModel:
     @classmethod
     def INPUT_TYPES(s):
@@ -483,7 +478,7 @@ class DownloadAndLoadCogVideoGGUFModel:
         }
 
         return (pipeline,)
-
+#region Tora
 class DownloadAndLoadToraModel:
     @classmethod
     def INPUT_TYPES(s):
@@ -591,7 +586,7 @@ class DownloadAndLoadToraModel:
         }
 
         return (toramodel,)
-
+#region controlnet
 class DownloadAndLoadCogVideoControlNet:
     @classmethod
     def INPUT_TYPES(s):
