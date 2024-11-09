@@ -109,37 +109,28 @@ class CogVideoXAttnProcessor2_0:
         if attn.norm_k is not None:
             key = attn.norm_k(key)
 
+        # Apply RoPE if needed
         if image_rotary_emb is not None:
             from diffusers.models.embeddings import apply_rotary_emb
-            has_nan = torch.isnan(query).any()
-            if has_nan:
-                raise ValueError(f"query before rope has nan: {has_nan}")
 
-            query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)      
+            query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
 
-        #if SAGEATTN_IS_AVAILABLE:
-        #    hidden_states = sageattn(query, key, value, is_causal=False)
-        #else:
-        hidden_states = F.scaled_dot_product_attention(
-        query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-        )
-        has_nan = torch.isnan(hidden_states).any()
-        if has_nan:
-            raise ValueError(f"hs after scaled_dot_product_attention has nan: {has_nan}")
-        has_inf = torch.isinf(hidden_states).any()
-        if has_inf:
-            raise ValueError(f"hs after scaled_dot_product_attention has inf: {has_inf}")
+        if SAGEATTN_IS_AVAILABLE:
+            hidden_states = sageattn(query, key, value, is_causal=False)
+        else:
+            hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
-        has_nan = torch.isnan(hidden_states).any()
-        
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
+
         encoder_hidden_states, hidden_states = hidden_states.split(
             [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
         )
@@ -322,7 +313,6 @@ class CogVideoXBlock(nn.Module):
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
         )
-       
         # Tora Motion-guidance Fuser
         if video_flow_feature is not None:
             H, W = video_flow_feature.shape[-2:]
@@ -747,8 +737,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 output = hidden_states.reshape(
                     batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
                 )
-            output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
-            output = output[:, remaining_frames:]
+                output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
+                output = output[:, remaining_frames:]
             
             (bb, tt, cc, hh, ww) = output.shape
             cond = rearrange(output, "B T C H W -> (B T) C H W", B=bb, C=cc, T=tt, H=hh, W=ww)
@@ -770,7 +760,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             output = torch.cat([output, recovered_uncond])
         else:
             for i, block in enumerate(self.transformer_blocks):
-                print("block", i)
+                #print("block", i)
                 hidden_states, encoder_hidden_states = block(
                     hidden_states=hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -820,8 +810,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 output = hidden_states.reshape(
                     batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
                 )
-            output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
-            output = output[:, remaining_frames:]
+                output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
+                output = output[:, remaining_frames:]
 
             if self.fastercache_counter >= self.fastercache_start_step + 1: 
                 (bb, tt, cc, hh, ww) = output.shape

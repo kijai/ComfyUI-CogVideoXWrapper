@@ -26,9 +26,8 @@ from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
-#from diffusers.models.embeddings import get_3d_rotary_pos_embed
+from diffusers.models.embeddings import get_3d_rotary_pos_embed
 from diffusers.loaders import CogVideoXLoraLoaderMixin
-from .embeddings import get_3d_rotary_pos_embed
 
 from .custom_cogvideox_transformer_3d import CogVideoXTransformer3DModel
 
