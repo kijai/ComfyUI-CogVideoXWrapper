@@ -36,10 +36,14 @@ def fp8_linear_forward(cls, original_dtype, input):
     else:
         return cls.original_forward(input)
 
-def convert_fp8_linear(module, original_dtype):
+def convert_fp8_linear(module, original_dtype, params_to_keep={}):
     setattr(module, "fp8_matmul_enabled", True)
+   
+        
     for name, module in module.named_modules():
-        if isinstance(module, nn.Linear):
-            original_forward = module.forward
-            setattr(module, "original_forward", original_forward)
-            setattr(module, "forward", lambda input, m=module: fp8_linear_forward(m, original_dtype, input))
+        if not any(keyword in name for keyword in params_to_keep):
+            if isinstance(module, nn.Linear):
+                print(name)
+                original_forward = module.forward
+                setattr(module, "original_forward", original_forward)
+                setattr(module, "forward", lambda input, m=module: fp8_linear_forward(m, original_dtype, input))

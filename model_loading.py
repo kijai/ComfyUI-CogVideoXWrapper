@@ -153,7 +153,6 @@ class DownloadAndLoadCogVideoModel:
             base_path = os.path.join(download_path, (model.split("/")[-1]))
             download_path = base_path
             repo_id = model
-            
 
         if "2b" in model:
             scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
@@ -193,13 +192,15 @@ class DownloadAndLoadCogVideoModel:
         #fp8
         if fp8_transformer == "enabled" or fp8_transformer == "fastmode":
             for name, param in transformer.named_parameters():
-                params_to_keep = {"patch_embed", "lora", "pos_embedding"}
+                params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding"}
                 if not any(keyword in name for keyword in params_to_keep):
                     param.data = param.data.to(torch.float8_e4m3fn)
         
             if fp8_transformer == "fastmode":
                 from .fp8_optimization import convert_fp8_linear
-                convert_fp8_linear(transformer, dtype)
+                if "1.5" in model:
+                    params_to_keep = {"norm","ff"}
+                convert_fp8_linear(transformer, dtype, params_to_keep=params_to_keep)
 
         with open(scheduler_path) as f:
             scheduler_config = json.load(f)
