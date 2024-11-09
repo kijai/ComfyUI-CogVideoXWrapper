@@ -243,8 +243,7 @@ class DownloadAndLoadCogVideoModel:
                 adapter_list = []
                 adapter_weights = []
                 for l in lora:
-                    if l["fuse_lora"]:
-                        fuse = True
+                    fuse = True if l["fuse_lora"] else False
                     lora_sd = load_torch_file(l["path"])             
                     for key, val in lora_sd.items():
                         if "lora_B" in key:
