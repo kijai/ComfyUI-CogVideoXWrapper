@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 
 def get_1d_rotary_pos_embed(
     dim: int,
@@ -123,9 +123,9 @@ def get_3d_rotary_pos_embed(
         freqs = torch.cat(
             [freqs_t, freqs_h, freqs_w], dim=-1
         )  # temporal_size, grid_size_h, grid_size_w, (dim_t + dim_h + dim_w)
-        #freqs = freqs.view(
-        #    temporal_size * grid_size_h * grid_size_w, -1
-        #)  # (temporal_size * grid_size_h * grid_size_w), (dim_t + dim_h + dim_w)
+        freqs = freqs.view(
+            temporal_size * grid_size_h * grid_size_w, -1
+        )  # (temporal_size * grid_size_h * grid_size_w), (dim_t + dim_h + dim_w)
         return freqs
 
     t_cos, t_sin = freqs_t  # both t_cos and t_sin has shape: temporal_size, dim_t
@@ -236,16 +236,18 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
 
-class CogVideoX1_1PatchEmbed(nn.Module):
+class CogVideoXPatchEmbed(nn.Module):
     def __init__(
         self,
         patch_size: int = 2,
+        patch_size_t: Optional[int] = None,
         in_channels: int = 16,
         embed_dim: int = 1920,
         text_embed_dim: int = 4096,
+        bias: bool = True,
         sample_width: int = 90,
         sample_height: int = 60,
-        sample_frames: int = 81,
+        sample_frames: int = 49,
         temporal_compression_ratio: int = 4,
         max_text_seq_length: int = 226,
         spatial_interpolation_scale: float = 1.875,
@@ -255,8 +257,8 @@ class CogVideoX1_1PatchEmbed(nn.Module):
     ) -> None:
         super().__init__()
 
-        # Adjust patch_size to handle three dimensions
-        self.patch_size = (patch_size, patch_size, patch_size)  # (depth, height, width)
+        self.patch_size = patch_size
+        self.patch_size_t = patch_size_t
         self.embed_dim = embed_dim
         self.sample_height = sample_height
         self.sample_width = sample_width
@@ -268,8 +270,15 @@ class CogVideoX1_1PatchEmbed(nn.Module):
         self.use_positional_embeddings = use_positional_embeddings
         self.use_learned_positional_embeddings = use_learned_positional_embeddings
 
-        # Use Linear layer for projection
-        self.proj = nn.Linear(in_channels * (patch_size ** 3), embed_dim)
+        if patch_size_t is None:
+            # CogVideoX 1.0 checkpoints
+            self.proj = nn.Conv2d(
+                in_channels, embed_dim, kernel_size=(patch_size, patch_size), stride=patch_size, bias=bias
+            )
+        else:
+            # CogVideoX 1.5 checkpoints
+            self.proj = nn.Linear(in_channels * patch_size * patch_size * patch_size_t, embed_dim)
+
         self.text_proj = nn.Linear(text_embed_dim, embed_dim)
 
         if use_positional_embeddings or use_learned_positional_embeddings:
@@ -278,8 +287,8 @@ class CogVideoX1_1PatchEmbed(nn.Module):
             self.register_buffer("pos_embedding", pos_embedding, persistent=persistent)
 
     def _get_positional_embeddings(self, sample_height: int, sample_width: int, sample_frames: int) -> torch.Tensor:
-        post_patch_height = sample_height // self.patch_size[1]
-        post_patch_width = sample_width // self.patch_size[2]
+        post_patch_height = sample_height // self.patch_size
+        post_patch_width = sample_width // self.patch_size
         post_time_compression_frames = (sample_frames - 1) // self.temporal_compression_ratio + 1
         num_patches = post_patch_height * post_patch_width * post_time_compression_frames
 
@@ -291,44 +300,46 @@ class CogVideoX1_1PatchEmbed(nn.Module):
             self.temporal_interpolation_scale,
         )
         pos_embedding = torch.from_numpy(pos_embedding).flatten(0, 1)
-        joint_pos_embedding = torch.zeros(1, self.max_text_seq_length + num_patches, self.embed_dim, requires_grad=False)
-        joint_pos_embedding.data[:, self.max_text_seq_length:].copy_(pos_embedding)
+        joint_pos_embedding = torch.zeros(
+            1, self.max_text_seq_length + num_patches, self.embed_dim, requires_grad=False
+        )
+        joint_pos_embedding.data[:, self.max_text_seq_length :].copy_(pos_embedding)
 
         return joint_pos_embedding
 
     def forward(self, text_embeds: torch.Tensor, image_embeds: torch.Tensor):
-        """
+        r"""
         Args:
-            text_embeds (torch.Tensor): Input text embeddings of shape (batch_size, seq_length, embedding_dim).
-            image_embeds (torch.Tensor): Input image embeddings of shape (batch_size, num_frames, channels, height, width).
+            text_embeds (`torch.Tensor`):
+                Input text embeddings. Expected shape: (batch_size, seq_length, embedding_dim).
+            image_embeds (`torch.Tensor`):
+                Input image embeddings. Expected shape: (batch_size, num_frames, channels, height, width).
         """
         text_embeds = self.text_proj(text_embeds)
-        first_frame = image_embeds[:, 0:1, :, :, :]
-        duplicated_first_frame = first_frame.repeat(1, 2, 1, 1, 1)  # (batch, 2, channels, height, width)
-        # Copy the first frames, for t_patch
-        image_embeds = torch.cat([duplicated_first_frame, image_embeds[:, 1:, :, :, :]], dim=1)
-        batch, num_frames, channels, height, width = image_embeds.shape
-        image_embeds = image_embeds.permute(0, 2, 1, 3, 4).contiguous()
-        image_embeds = image_embeds.view(batch, channels, -1).permute(0, 2, 1)
 
-        rope_patch_t = num_frames // self.patch_size[0]
-        rope_patch_h = height // self.patch_size[1]
-        rope_patch_w = width // self.patch_size[2]
+        batch_size, num_frames, channels, height, width = image_embeds.shape
 
-        image_embeds = image_embeds.view(
-            batch,
-            rope_patch_t, self.patch_size[0],
-            rope_patch_h, self.patch_size[1],
-            rope_patch_w, self.patch_size[2],
-            channels
-        )
-        image_embeds = image_embeds.permute(0, 1, 3, 5, 7, 2, 4, 6).contiguous()
-        image_embeds = image_embeds.view(batch, rope_patch_t * rope_patch_h * rope_patch_w, -1)
-        image_embeds = self.proj(image_embeds)
-        # Concatenate text and image embeddings
-        embeds = torch.cat([text_embeds, image_embeds], dim=1).contiguous()
+        if self.patch_size_t is None:
+            image_embeds = image_embeds.reshape(-1, channels, height, width)
+            image_embeds = self.proj(image_embeds)
+            image_embeds = image_embeds.view(batch_size, num_frames, *image_embeds.shape[1:])
+            image_embeds = image_embeds.flatten(3).transpose(2, 3)  # [batch, num_frames, height x width, channels]
+            image_embeds = image_embeds.flatten(1, 2)  # [batch, num_frames x height x width, channels]
+        else:
+            p = self.patch_size
+            p_t = self.patch_size_t
 
-        # Add positional embeddings if applicable
+            image_embeds = image_embeds.permute(0, 1, 3, 4, 2)
+            image_embeds = image_embeds.reshape(
+                batch_size, num_frames // p_t, p_t, height // p, p, width // p, p, channels
+            )
+            image_embeds = image_embeds.permute(0, 1, 3, 5, 7, 2, 4, 6).flatten(4, 7).flatten(1, 3)
+            image_embeds = self.proj(image_embeds)
+
+        embeds = torch.cat(
+            [text_embeds, image_embeds], dim=1
+        ).contiguous()  # [batch, seq_length + num_frames x height x width, channels]
+
         if self.use_positional_embeddings or self.use_learned_positional_embeddings:
             if self.use_learned_positional_embeddings and (self.sample_width != width or self.sample_height != height):
                 raise ValueError(
@@ -339,9 +350,9 @@ class CogVideoX1_1PatchEmbed(nn.Module):
             pre_time_compression_frames = (num_frames - 1) * self.temporal_compression_ratio + 1
 
             if (
-                    self.sample_height != height
-                    or self.sample_width != width
-                    or self.sample_frames != pre_time_compression_frames
+                self.sample_height != height
+                or self.sample_width != width
+                or self.sample_frames != pre_time_compression_frames
             ):
                 pos_embedding = self._get_positional_embeddings(height, width, pre_time_compression_frames)
                 pos_embedding = pos_embedding.to(embeds.device, dtype=embeds.dtype)
@@ -351,3 +362,4 @@ class CogVideoX1_1PatchEmbed(nn.Module):
             embeds = embeds + pos_embedding
 
         return embeds
+    

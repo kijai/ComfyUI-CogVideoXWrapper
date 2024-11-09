@@ -21,6 +21,7 @@ import torch.nn.functional as F
 import math
 
 from diffusers.models import AutoencoderKLCogVideoX#, CogVideoXTransformer3DModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
@@ -115,7 +116,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
+class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
 
@@ -298,18 +299,18 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         weights = weights.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4).repeat(1, t_batch_size,1, 1, 1)
         return weights
     
-    def fuse_qkv_projections(self) -> None:
-        r"""Enables fused QKV projections."""
-        self.fusing_transformer = True
-        self.transformer.fuse_qkv_projections()
+    # def fuse_qkv_projections(self) -> None:
+    #     r"""Enables fused QKV projections."""
+    #     self.fusing_transformer = True
+    #     self.transformer.fuse_qkv_projections()
 
-    def unfuse_qkv_projections(self) -> None:
-        r"""Disable QKV projection fusion if enabled."""
-        if not self.fusing_transformer:
-            logger.warning("The Transformer was not initially fused for QKV projections. Doing nothing.")
-        else:
-            self.transformer.unfuse_qkv_projections()
-            self.fusing_transformer = False
+    # def unfuse_qkv_projections(self) -> None:
+    #     r"""Disable QKV projection fusion if enabled."""
+    #     if not self.fusing_transformer:
+    #         logger.warning("The Transformer was not initially fused for QKV projections. Doing nothing.")
+    #     else:
+    #         self.transformer.unfuse_qkv_projections()
+    #         self.fusing_transformer = False
 
     def _prepare_rotary_positional_embeddings(
         self,
@@ -322,8 +323,12 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         ) -> Tuple[torch.Tensor, torch.Tensor]:
         grid_height = height // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
         grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-        base_size_width = 720 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
-        base_size_height = 480 // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
+        p = self.transformer.config.patch_size
+        p_t = self.transformer.config.patch_size_t or 1
+
+        base_size_width = self.transformer.config.sample_width // p
+        base_size_height = self.transformer.config.sample_height // p
+        base_num_frames = (num_frames + p_t - 1) // p_t
 
         grid_crops_coords = get_resize_crop_region_for_grid(
             (grid_height, grid_width), base_size_width, base_size_height
@@ -332,7 +337,7 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
             embed_dim=self.transformer.config.attention_head_dim,
             crops_coords=grid_crops_coords,
             grid_size=(grid_height, grid_width),
-            temporal_size=num_frames,
+            temporal_size=base_num_frames,
             use_real=True,
         )
         
