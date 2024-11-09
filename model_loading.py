@@ -32,7 +32,7 @@ class CogVideoLoraSelect:
             "required": {
                "lora": (folder_paths.get_filename_list("cogvideox_loras"), 
                 {"tooltip": "LORA models are expected to be in ComfyUI/models/CogVideo/loras with .safetensors extension"}),
-                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
+                "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.0001, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
             },
             "optional": {
                 "prev_lora":("COGLORA", {"default": None, "tooltip": "For loading multiple LoRAs"}),
