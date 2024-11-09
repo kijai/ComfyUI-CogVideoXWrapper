@@ -60,6 +60,7 @@ class CogVideoLoraSelect:
         cog_loras_list.append(cog_lora)
         print(cog_loras_list)
         return (cog_loras_list,)
+    
 #region DownloadAndLoadCogVideoModel
 class DownloadAndLoadCogVideoModel:
     @classmethod
@@ -98,6 +99,7 @@ class DownloadAndLoadCogVideoModel:
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
                 "lora": ("COGLORA", {"default": None}),
                 "compile_args":("COMPILEARGS", ),
+                "attention_mode": (["sdpa", "sageattn"], {"default": "sdpa"}),
                 "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
             }
         }
@@ -108,9 +110,9 @@ class DownloadAndLoadCogVideoModel:
     CATEGORY = "CogVideoWrapper"
     DESCRIPTION = "Downloads and loads the selected CogVideo model from Huggingface to 'ComfyUI/models/CogVideo'"
 
-    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None, compile_args=None, load_device="main_device"):
-        
-        check_diffusers_version()
+    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", 
+                  enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None, compile_args=None, 
+                  attention_mode="sdpa", load_device="main_device"):
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
@@ -194,6 +196,8 @@ class DownloadAndLoadCogVideoModel:
                 transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder)
         
         transformer = transformer.to(dtype).to(transformer_load_device)
+
+        transformer.attention_mode = attention_mode
 
         if block_edit is not None:
             transformer = remove_specific_blocks(transformer, block_edit)

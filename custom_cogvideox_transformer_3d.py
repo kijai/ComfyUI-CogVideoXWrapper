@@ -32,6 +32,7 @@ from diffusers.models.modeling_outputs import Transformer2DModelOutput
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.models.normalization import AdaLayerNorm, CogVideoXLayerNormZero
 from diffusers.loaders import PeftAdapterMixin
+from diffusers.models.embeddings import apply_rotary_emb
 from .embeddings import CogVideoXPatchEmbed
 
 
@@ -40,9 +41,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 try:
     from sageattention import sageattn
     SAGEATTN_IS_AVAILABLE = True
-    logger.info("Using sageattn")
 except:
-    logger.info("sageattn not found, using sdpa")
     SAGEATTN_IS_AVAILABLE = False
 
 def fft(tensor):
@@ -73,7 +72,6 @@ class CogVideoXAttnProcessor2_0:
             raise ImportError("CogVideoXAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
         
     @torch.compiler.disable()
-    
     def __call__(
         self,
         attn: Attention,
@@ -81,6 +79,7 @@ class CogVideoXAttnProcessor2_0:
         encoder_hidden_states: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
+        attention_mode: Optional[str] = None,
     ) -> torch.Tensor:
         text_seq_length = encoder_hidden_states.size(1)
 
@@ -112,20 +111,21 @@ class CogVideoXAttnProcessor2_0:
 
         # Apply RoPE if needed
         if image_rotary_emb is not None:
-            from diffusers.models.embeddings import apply_rotary_emb
-
             query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
             if not attn.is_cross_attention:
-                key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)        
-        
-        #if SAGEATTN_IS_AVAILABLE:
-        #    hidden_states = sageattn(query, key, value, is_causal=False)
-        #else:
-        hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
-            )
-        if torch.isinf(hidden_states).any():
-            raise ValueError(f"hidden_states after dot product has inf")
+                key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
+                 
+        if attention_mode == "sageattn":
+            if SAGEATTN_IS_AVAILABLE:
+               hidden_states = sageattn(query, key, value, attn_mask=attention_mask, dropout_p=0.0,is_causal=False)
+            else:
+                raise ImportError("sageattn not found")
+        else:
+            hidden_states = F.scaled_dot_product_attention(
+                query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+                )
+        #if torch.isinf(hidden_states).any():
+        #    raise ValueError(f"hidden_states after dot product has inf")
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
 
@@ -193,6 +193,7 @@ class CogVideoXBlock(nn.Module):
         ff_inner_dim: Optional[int] = None,
         ff_bias: bool = True,
         attention_out_bias: bool = True,
+        attention_mode: Optional[str] = None,
     ):
         super().__init__()
 
@@ -224,6 +225,7 @@ class CogVideoXBlock(nn.Module):
         )
         self.cached_hidden_states = []
         self.cached_encoder_hidden_states = []
+        self.attention_mode = attention_mode
         
     def forward(
         self,
@@ -235,7 +237,7 @@ class CogVideoXBlock(nn.Module):
         fuser=None,
         fastercache_counter=0,
         fastercache_start_step=15,
-        fastercache_device="cuda:0"
+        fastercache_device="cuda:0",
     ) -> torch.Tensor:
     
         text_seq_length = encoder_hidden_states.size(1)
@@ -271,7 +273,8 @@ class CogVideoXBlock(nn.Module):
             attn_hidden_states, attn_encoder_hidden_states = self.attn1(
                 hidden_states=norm_hidden_states,
                 encoder_hidden_states=norm_encoder_hidden_states,
-                image_rotary_emb=image_rotary_emb
+                image_rotary_emb=image_rotary_emb,
+                attention_mode=self.attention_mode,
             )
             if fastercache_counter == fastercache_start_step:
                 self.cached_hidden_states = [attn_hidden_states.to(fastercache_device), attn_hidden_states.to(fastercache_device)]
@@ -386,6 +389,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         use_rotary_positional_embeddings: bool = False,
         use_learned_positional_embeddings: bool = False,
         patch_bias: bool = True,
+        attention_mode: Optional[str] = None,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -471,6 +475,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.fastercache_lf_step = 40
         self.fastercache_hf_step = 30
         self.fastercache_device = "cuda"
+        self.attention_mode = attention_mode
 
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
@@ -667,9 +672,9 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     fastercache_counter = self.fastercache_counter,
                     fastercache_device = self.fastercache_device
                 )
-                has_nan = torch.isnan(hidden_states).any()
-                if has_nan:
-                    raise ValueError(f"block output hidden_states has nan: {has_nan}")
+                #has_nan = torch.isnan(hidden_states).any()
+                #if has_nan:
+                #    raise ValueError(f"block output hidden_states has nan: {has_nan}")
 
             if (controlnet_states is not None) and (i < len(controlnet_states)):
                 controlnet_states_block = controlnet_states[i]
