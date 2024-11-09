@@ -442,10 +442,6 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 argument.
         """
 
-        #assert (
-        #    num_frames <= 48 and num_frames % fps == 0 and fps == 8
-        #), f"The number of frames must be divisible by {fps=} and less than 48 frames (for now). Other values are not supported in CogVideoX."
-
         height = height or self.transformer.config.sample_size * self.vae_scale_factor_spatial
         width = width or self.transformer.config.sample_size * self.vae_scale_factor_spatial
         num_videos_per_prompt = 1
@@ -480,8 +476,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         # 5. Prepare latents.
         latent_channels = self.vae.config.latent_channels
 
-        if latents is None and num_frames == t_tile_length:
-            num_frames += 1
+        #if latents is None and num_frames == t_tile_length:
+        #    num_frames += 1
 
         if self.original_mask is not None:
             image_latents = latents

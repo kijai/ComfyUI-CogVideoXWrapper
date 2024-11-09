@@ -72,6 +72,7 @@ class DownloadAndLoadCogVideoModel:
                         "THUDM/CogVideoX-5b",
                         "THUDM/CogVideoX-5b-I2V",
                         "kijai/CogVideoX-5b-1.5-T2V",
+                        "kijai/CogVideoX-5b-1.5-I2V",
                         "bertjiazheng/KoolCogVideoX-5b",
                         "kijai/CogVideoX-Fun-2b",
                         "kijai/CogVideoX-Fun-5b",
@@ -97,6 +98,7 @@ class DownloadAndLoadCogVideoModel:
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
                 "lora": ("COGLORA", {"default": None}),
                 "compile_args":("COMPILEARGS", ),
+                "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
             }
         }
 
@@ -106,12 +108,13 @@ class DownloadAndLoadCogVideoModel:
     CATEGORY = "CogVideoWrapper"
     DESCRIPTION = "Downloads and loads the selected CogVideo model from Huggingface to 'ComfyUI/models/CogVideo'"
 
-    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None, compile_args=None):
+    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None, compile_args=None, load_device="main_device"):
         
         check_diffusers_version()
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
+        transformer_load_device = device if load_device == "main_device" else offload_device
         mm.soft_empty_cache()
 
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
@@ -134,6 +137,8 @@ class DownloadAndLoadCogVideoModel:
                 if not os.path.exists(base_path):
                     base_path = os.path.join(download_path, (model.split("/")[-1]))
                 download_path = base_path
+            subfolder = "transformer"
+            allow_patterns = ["*transformer*", "*scheduler*", "*vae*"]
 
         elif "2b" in model:
             if 'img2vid' in model:
@@ -144,27 +149,33 @@ class DownloadAndLoadCogVideoModel:
                 base_path = os.path.join(download_path, "CogVideo2B")
                 download_path = base_path
                 repo_id = model
-        elif "1.5-T2V" in model:
+            subfolder = "transformer"
+            allow_patterns = ["*transformer*", "*scheduler*", "*vae*"]
+        elif "1.5-T2V" in model or "1.5-I2V" in model:
             base_path = os.path.join(download_path, "CogVideoX-5b-1.5")
             download_path = base_path
-            transformer_path = os.path.join(base_path, "transformer_T2V")
+            subfolder = "transformer_T2V" if "1.5-T2V" in model else "transformer_I2V"
+            allow_patterns = [f"*{subfolder}*"]
             repo_id = "kijai/CogVideoX-5b-1.5"
         else:
             base_path = os.path.join(download_path, (model.split("/")[-1]))
             download_path = base_path
             repo_id = model
+            subfolder = "transformer"
+            allow_patterns = ["*transformer*", "*scheduler*", "*vae*"]
 
         if "2b" in model:
             scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
         else:
             scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
         
-        if not os.path.exists(base_path) or not os.path.exists(os.path.join(base_path, "transformer")):
+        if not os.path.exists(base_path) or not os.path.exists(os.path.join(base_path, subfolder)):
             log.info(f"Downloading model to: {base_path}")
             from huggingface_hub import snapshot_download
 
             snapshot_download(
                 repo_id=repo_id,
+                allow_patterns=allow_patterns,
                 ignore_patterns=["*text_encoder*", "*tokenizer*"],
                 local_dir=download_path,
                 local_dir_use_symlinks=False,
@@ -173,18 +184,16 @@ class DownloadAndLoadCogVideoModel:
         # transformer
         if "Fun" in model:
             if pab_config is not None:
-                transformer = CogVideoXTransformer3DModelFunPAB.from_pretrained(base_path, subfolder="transformer")
+                transformer = CogVideoXTransformer3DModelFunPAB.from_pretrained(base_path, subfolder=subfolder)
             else:
-                transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder="transformer")
-        elif "1.5-T2V" in model:
-            transformer = CogVideoXTransformer3DModel.from_pretrained(transformer_path)
+                transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder=subfolder)
         else:
             if pab_config is not None:
-                transformer = CogVideoXTransformer3DModelPAB.from_pretrained(base_path, subfolder="transformer")
+                transformer = CogVideoXTransformer3DModelPAB.from_pretrained(base_path, subfolder=subfolder)
             else:
-                transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer")
+                transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder)
         
-        transformer = transformer.to(dtype).to(offload_device)
+        transformer = transformer.to(dtype).to(transformer_load_device)
 
         if block_edit is not None:
             transformer = remove_specific_blocks(transformer, block_edit)

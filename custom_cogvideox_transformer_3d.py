@@ -254,7 +254,7 @@ class CogVideoXBlock(nn.Module):
             norm_hidden_states = rearrange(h, "(B T) C H W ->  B (T H W) C", T=T)
             del h, fuser        
         
-        #fastercache
+        #region fastercache
         B = norm_hidden_states.shape[0]
         if fastercache_counter >= fastercache_start_step + 3 and fastercache_counter%3!=0 and self.cached_hidden_states[-1].shape[0] >= B:
             attn_hidden_states = (
@@ -365,6 +365,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         flip_sin_to_cos: bool = True,
         freq_shift: int = 0,
         time_embed_dim: int = 512,
+        ofs_embed_dim: Optional[int] = None,
         text_embed_dim: int = 4096,
         num_layers: int = 30,
         dropout: float = 0.0,
@@ -373,7 +374,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         sample_height: int = 60,
         sample_frames: int = 49,
         patch_size: int = 2,
-        patch_size_t: int = 2,
+        patch_size_t: int = None,
         temporal_compression_ratio: int = 4,
         max_text_seq_length: int = 226,
         activation_fn: str = "gelu-approximate",
@@ -419,6 +420,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # 2. Time embeddings
         self.time_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
         self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
+
+        self.ofs_embedding = None
+
+        if ofs_embed_dim:
+            self.ofs_embedding = TimestepEmbedding(ofs_embed_dim, ofs_embed_dim, timestep_activation_fn) # same as time embeddings, for ofs
 
         # 3. Define spatio-temporal transformers blocks
         self.transformer_blocks = nn.ModuleList(
@@ -553,6 +559,9 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=hidden_states.dtype)
         emb = self.time_embedding(t_emb, timestep_cond)
+        if self.ofs_embedding is not None: #1.5 I2V
+            emb_ofs = self.ofs_embedding(emb, timestep_cond)
+            emb = emb + emb_ofs
 
         # 2. Patch embedding
         p = self.config.patch_size
