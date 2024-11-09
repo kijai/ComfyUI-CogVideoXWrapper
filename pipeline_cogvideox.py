@@ -21,7 +21,7 @@ import torch.nn.functional as F
 import math
 
 from diffusers.models import AutoencoderKLCogVideoX#, CogVideoXTransformer3DModel
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+#from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
@@ -115,7 +115,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
+class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
 

@@ -821,6 +821,7 @@ class CogVideoSampler:
         assert (
             "I2V" not in pipeline.get("model_name", "") or
             "1.5" in pipeline.get("model_name", "") or
+            "1_5" in pipeline.get("model_name", "") or
             num_frames == 49 or
             context_options is not None
         ), "1.0 I2V model can only do 49 frames"

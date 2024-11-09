@@ -157,7 +157,7 @@ class DownloadAndLoadCogVideoModel:
             base_path = os.path.join(download_path, "CogVideoX-5b-1.5")
             download_path = base_path
             subfolder = "transformer_T2V" if "1.5-T2V" in model else "transformer_I2V"
-            allow_patterns = [f"*{subfolder}*"]
+            allow_patterns = [f"*{subfolder}*", "*vae*", "*scheduler*"]
             repo_id = "kijai/CogVideoX-5b-1.5"
         else:
             base_path = os.path.join(download_path, (model.split("/")[-1]))
@@ -204,15 +204,17 @@ class DownloadAndLoadCogVideoModel:
         
         #fp8
         if fp8_transformer == "enabled" or fp8_transformer == "fastmode":
+            params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding"}
+            if "1.5" in model:
+                    params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding", "norm","ofs_embedding", "norm_final", "norm_out", "proj_out"}
             for name, param in transformer.named_parameters():
-                params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding"}
                 if not any(keyword in name for keyword in params_to_keep):
                     param.data = param.data.to(torch.float8_e4m3fn)
         
             if fp8_transformer == "fastmode":
                 from .fp8_optimization import convert_fp8_linear
                 if "1.5" in model:
-                    params_to_keep = {"norm","ff"}
+                    params_to_keep.update({"ff"})
                 convert_fp8_linear(transformer, dtype, params_to_keep=params_to_keep)
 
         with open(scheduler_path) as f:
@@ -311,12 +313,12 @@ class DownloadAndLoadCogVideoGGUFModel:
                     [
                         "CogVideoX_5b_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_I2V_GGUF_Q4_0.safetensors",
+                        "CogVideoX_5b_1_5_I2V_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_1_1_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_1_1_Pose_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_Interpolation_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_Tora_GGUF_Q4_0.safetensors",
-
                     ],
                 ),
             "vae_precision": (["fp16", "fp32", "bf16"], {"default": "bf16", "tooltip": "VAE dtype"}),
@@ -327,8 +329,9 @@ class DownloadAndLoadCogVideoGGUFModel:
             "optional": {
                 "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
+                #"lora": ("COGLORA", {"default": None}),
                 "compile": (["disabled","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
-              
+                "attention_mode": (["sdpa", "sageattn"], {"default": "sdpa"}),
             }
         }
 
@@ -337,7 +340,8 @@ class DownloadAndLoadCogVideoGGUFModel:
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
 
-    def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload, pab_config=None, block_edit=None, compile="disabled"):
+    def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload, 
+                  pab_config=None, block_edit=None, compile="disabled", attention_mode="sdpa"):
 
         check_diffusers_version()
 
@@ -375,7 +379,7 @@ class DownloadAndLoadCogVideoGGUFModel:
         with open(transformer_path) as f:
             transformer_config = json.load(f)
 
-        sd = load_torch_file(gguf_path)
+        
 
         from . import mz_gguf_loader
         import importlib
@@ -393,6 +397,13 @@ class DownloadAndLoadCogVideoGGUFModel:
                     transformer = CogVideoXTransformer3DModelFun.from_config(transformer_config)
             elif "I2V" in model or "Interpolation" in model:
                 transformer_config["in_channels"] = 32
+                if "1_5" in model:
+                    transformer_config["ofs_embed_dim"] = 512
+                    transformer_config["use_learned_positional_embeddings"] = False
+                    transformer_config["patch_size_t"] = 2
+                    transformer_config["patch_bias"] = False
+                    transformer_config["sample_height"] = 96
+                    transformer_config["sample_width"] = 170
                 if pab_config is not None:
                     transformer = CogVideoXTransformer3DModelPAB.from_config(transformer_config)
                 else:
@@ -405,23 +416,23 @@ class DownloadAndLoadCogVideoGGUFModel:
                     transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
 
             if "2b" in model:
-                for name, param in transformer.named_parameters():
-                    if name != "pos_embedding":
-                        param.data = param.data.to(torch.float8_e4m3fn)
-                    else:
-                        param.data = param.data.to(torch.float16)
-            else:
-                transformer.to(torch.float8_e4m3fn)
-
+                params_to_keep = {"patch_embed", "pos_embedding", "time_embedding"}
+                cast_dtype = torch.float16
+            elif "1_5" in model:
+                params_to_keep = {"patch_embed", "time_embedding", "ofs_embedding", "norm_final", "norm_out", "proj_out", "norm"}
+                cast_dtype = torch.bfloat16
+            for name, param in transformer.named_parameters():
+                if not any(keyword in name for keyword in params_to_keep):
+                    param.data = param.data.to(torch.bfloat16)
+                else:
+                    param.data = param.data.to(cast_dtype)
+            #for name, param in transformer.named_parameters():
+             #       print(name, param.data.dtype)
+           
             if block_edit is not None:
                 transformer = remove_specific_blocks(transformer, block_edit)
 
-            transformer = mz_gguf_loader.quantize_load_state_dict(transformer, sd, device="cpu")
-            if load_device == "offload_device":
-                transformer.to(offload_device)
-            else:
-                transformer.to(device)
-        
+        transformer.attention_mode = attention_mode
         
         if fp8_fastmode:
            from .fp8_optimization import convert_fp8_linear
@@ -468,6 +479,42 @@ class DownloadAndLoadCogVideoGGUFModel:
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
 
+        sd = load_torch_file(gguf_path)
+
+        # #LoRAs
+        # if lora is not None:        
+        #     if "fun" in model.lower():
+        #         raise NotImplementedError("LoRA with GGUF is not supported for Fun models")
+        #         from .lora_utils import merge_lora#, load_lora_into_transformer
+        #         #for l in lora:
+        #         #    log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
+        #         #    pipe.transformer = merge_lora(pipe.transformer, l["path"], l["strength"])
+        #     else:
+        #         adapter_list = []
+        #         adapter_weights = []
+        #         for l in lora:
+        #             lora_sd = load_torch_file(l["path"])             
+        #             for key, val in lora_sd.items():
+        #                 if "lora_B" in key:
+        #                     lora_rank = val.shape[1]
+        #                     break
+        #             log.info(f"Loading rank {lora_rank} LoRA weights from {l['path']} with strength {l['strength']}")
+        #             adapter_name = l['path'].split("/")[-1].split(".")[0]
+        #             adapter_weight = l['strength']
+        #             pipe.load_lora_weights(l['path'], weight_name=l['path'].split("/")[-1], lora_rank=lora_rank, adapter_name=adapter_name)
+                    
+        #             #transformer = load_lora_into_transformer(lora, transformer)
+        #             adapter_list.append(adapter_name)
+        #             adapter_weights.append(adapter_weight)
+        #         for l in lora:
+        #             pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
+        #         #pipe.fuse_lora(lora_scale=1 / lora_rank, components=["transformer"])
+        
+        pipe.transformer = mz_gguf_loader.quantize_load_state_dict(pipe.transformer, sd, device="cpu")
+        if load_device == "offload_device":
+            pipe.transformer.to(offload_device)
+        else:
+            pipe.transformer.to(device)
 
 
         pipeline = {
