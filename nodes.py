@@ -5,6 +5,8 @@ import comfy.model_management as mm
 from einops import rearrange
 from contextlib import nullcontext
 
+from .utils import log, check_diffusers_version
+check_diffusers_version()
 from diffusers.schedulers import (
     CogVideoXDDIMScheduler, 
     CogVideoXDPMScheduler, 
@@ -42,7 +44,7 @@ from PIL import Image
 import numpy as np
 import json
 
-from .utils import log, check_diffusers_version
+
 
 script_directory = os.path.dirname(os.path.abspath(__file__))
 
