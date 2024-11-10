@@ -349,6 +349,7 @@ class CogVideoImageEncode:
                 "chunk_size": ("INT", {"default": 16, "min": 4}),
                 "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
                 "mask": ("MASK", ),
+                "noise_aug_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001, "tooltip": "Augment image with noise"}),
             },
         }
 
@@ -357,7 +358,7 @@ class CogVideoImageEncode:
     FUNCTION = "encode"
     CATEGORY = "CogVideoWrapper"
 
-    def encode(self, pipeline, image, chunk_size=8, enable_tiling=False, mask=None):
+    def encode(self, pipeline, image, chunk_size=8, enable_tiling=False, mask=None, noise_aug_strength=0.0):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         generator = torch.Generator(device=device).manual_seed(0)
@@ -395,6 +396,8 @@ class CogVideoImageEncode:
         input_image = input_image.to(vae.dtype).to(device)
         input_image = input_image.unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
         B, C, T, H, W = input_image.shape
+        if noise_aug_strength > 0:
+            input_image = add_noise_to_reference_video(input_image, ratio=noise_aug_strength)
 
         latents_list = []
         # Loop through the temporal dimension in chunks of 16
@@ -786,7 +789,7 @@ class CogVideoSampler:
                 "negative": ("CONDITIONING", ),
                 "height": ("INT", {"default": 480, "min": 128, "max": 2048, "step": 16}),
                 "width": ("INT", {"default": 720, "min": 128, "max": 2048, "step": 16}),
-                "num_frames": ("INT", {"default": 48, "min": 16, "max": 1024, "step": 1}),
+                "num_frames": ("INT", {"default": 49, "min": 17, "max": 1024, "step": 4}),
                 "steps": ("INT", {"default": 50, "min": 1}),
                 "cfg": ("FLOAT", {"default": 6.0, "min": 0.0, "max": 30.0, "step": 0.01}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
@@ -868,6 +871,11 @@ class CogVideoSampler:
             pipe.transformer.use_fastercache = False
             pipe.transformer.fastercache_counter = 0
 
+        if not isinstance(cfg, list):
+            cfg = [cfg for _ in range(steps)]
+        else:
+            assert len(cfg) == steps, "Length of cfg list must match number of steps"
+  
         autocastcondition = not pipeline["onediff"] or not dtype == torch.float32
         autocast_context = torch.autocast(mm.get_autocast_device(device), dtype=dtype) if autocastcondition else nullcontext()
         with autocast_context:
