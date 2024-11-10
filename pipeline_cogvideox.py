@@ -865,7 +865,6 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
                         video_flow_features=video_flow_features if (tora is not None and tora["start_percent"] <= current_step_percentage <= tora["end_percent"]) else None,
                     )[0]
                     noise_pred = noise_pred.float()
-                    print(self._guidance_scale[i])
                     if isinstance(self.scheduler, CogVideoXDPMScheduler):
                         self._guidance_scale[i] = 1 + guidance_scale[i] * (
                             (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
