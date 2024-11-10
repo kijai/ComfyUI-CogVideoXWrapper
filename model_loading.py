@@ -418,8 +418,8 @@ class DownloadAndLoadCogVideoGGUFModel:
                 else:
                     transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
 
+            params_to_keep = {"patch_embed", "pos_embedding", "time_embedding"}
             if "2b" in model:
-                params_to_keep = {"patch_embed", "pos_embedding", "time_embedding"}
                 cast_dtype = torch.float16
             elif "1_5" in model:
                 params_to_keep = {"norm1.linear.weight", "patch_embed", "time_embedding", "ofs_embedding", "norm_final", "norm_out", "proj_out"}
