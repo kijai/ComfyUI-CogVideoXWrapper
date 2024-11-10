@@ -828,6 +828,10 @@ class CogVideoSampler:
             num_frames == 49 or
             context_options is not None
         ), "1.0 I2V model can only do 49 frames"
+        if image_cond_latents is not None:
+            assert "I2V" in pipeline.get("model_name", ""), "Image condition latents only supported for I2V models"
+        else:
+            assert "I2V" not in pipeline.get("model_name", ""), "Image condition latents required for I2V models"
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()

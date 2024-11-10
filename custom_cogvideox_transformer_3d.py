@@ -571,11 +571,10 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # 2. Patch embedding
         p = self.config.patch_size
         p_t = self.config.patch_size_t
-
         # We know that the hidden states height and width will always be divisible by patch_size.
         # But, the number of frames may not be divisible by patch_size_t. So, we pad with the beginning frames.
         if p_t is not None:
-            remaining_frames = p_t - num_frames % p_t
+            remaining_frames = 0 if num_frames % 2 == 0 else 1
             first_frame = hidden_states[:, :1].repeat(1, 1 + remaining_frames, 1, 1, 1)
             hidden_states = torch.cat([first_frame, hidden_states[:, 1:]], dim=1)
 
