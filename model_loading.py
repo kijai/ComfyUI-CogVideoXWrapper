@@ -206,7 +206,7 @@ class DownloadAndLoadCogVideoModel:
         if fp8_transformer == "enabled" or fp8_transformer == "fastmode":
             params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding"}
             if "1.5" in model:
-                    params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding", "norm","ofs_embedding", "norm_final", "norm_out", "proj_out"}
+                    params_to_keep.update({"norm1.linear.weight", "norm_k", "norm_q","ofs_embedding", "norm_final", "norm_out", "proj_out"}) 
             for name, param in transformer.named_parameters():
                 if not any(keyword in name for keyword in params_to_keep):
                     param.data = param.data.to(torch.float8_e4m3fn)
@@ -214,7 +214,7 @@ class DownloadAndLoadCogVideoModel:
             if fp8_transformer == "fastmode":
                 from .fp8_optimization import convert_fp8_linear
                 if "1.5" in model:
-                    params_to_keep.update({"ff"})
+                    params_to_keep.update({"ff"}) #otherwise NaNs
                 convert_fp8_linear(transformer, dtype, params_to_keep=params_to_keep)
 
         with open(scheduler_path) as f:
@@ -422,11 +422,11 @@ class DownloadAndLoadCogVideoGGUFModel:
                 params_to_keep = {"patch_embed", "pos_embedding", "time_embedding"}
                 cast_dtype = torch.float16
             elif "1_5" in model:
-                params_to_keep = {"patch_embed", "time_embedding", "ofs_embedding", "norm_final", "norm_out", "proj_out", "norm"}
+                params_to_keep = {"norm1.linear.weight", "patch_embed", "time_embedding", "ofs_embedding", "norm_final", "norm_out", "proj_out"}
                 cast_dtype = torch.bfloat16
             for name, param in transformer.named_parameters():
                 if not any(keyword in name for keyword in params_to_keep):
-                    param.data = param.data.to(torch.bfloat16)
+                    param.data = param.data.to(torch.float8_e4m3fn)
                 else:
                     param.data = param.data.to(cast_dtype)
             #for name, param in transformer.named_parameters():
@@ -438,8 +438,11 @@ class DownloadAndLoadCogVideoGGUFModel:
         transformer.attention_mode = attention_mode
         
         if fp8_fastmode:
+           params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding"}
+           if "1.5" in model:
+                params_to_keep.update({"ff","norm1.linear.weight", "norm_k", "norm_q","ofs_embedding", "norm_final", "norm_out", "proj_out"})   
            from .fp8_optimization import convert_fp8_linear
-           convert_fp8_linear(transformer, vae_dtype)
+           convert_fp8_linear(transformer, vae_dtype, params_to_keep=params_to_keep)
 
         if compile == "torch":
             # compilation
