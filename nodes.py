@@ -370,7 +370,7 @@ class CogVideoImageEncode:
         vae.enable_slicing()
         model_name = pipeline.get("model_name", "")
 
-        if "1.5" in model_name or "1_5" in model_name:
+        if ("1.5" in model_name or "1_5" in model_name) and image.shape[0] == 1:
             vae_scaling_factor = 1 / vae.config.scaling_factor
         else:
             vae_scaling_factor = vae.config.scaling_factor
@@ -428,12 +428,13 @@ class CogVideoImageEncode:
             elif hasattr(latents, "latents"):
                 latents = latents.latents
 
-            latents = vae_scaling_factor * latents
             latents = latents.permute(0, 2, 1, 3, 4)  # B, T_chunk, C, H, W
             latents_list.append(latents)
 
         # Concatenate all the chunks along the temporal dimension
         final_latents = torch.cat(latents_list, dim=1)
+        final_latents = final_latents * vae_scaling_factor
+        
         log.info(f"Encoded latents shape: {final_latents.shape}")
         if not pipeline["cpu_offloading"]:
             vae.to(offload_device)
@@ -810,9 +811,9 @@ class CogVideoSampler:
                     }),
             },
             "optional": {
-                "samples": ("LATENT", ),
+                "samples": ("LATENT", {"tooltip": "init Latents to use for video2video process"} ),
                 "denoise_strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
-                "image_cond_latents": ("LATENT", ),
+                "image_cond_latents": ("LATENT",{"tooltip": "Latent to use for image2video conditioning"} ),
                 "context_options": ("COGCONTEXT", ),
                 "controlnet": ("COGVIDECONTROLNET",),
                 "tora_trajectory": ("TORAFEATURES", ),
@@ -841,6 +842,7 @@ class CogVideoSampler:
             context_options is not None
         ), "1.0 I2V model can only do 49 frames"
         if image_cond_latents is not None:
+            assert image_cond_latents.shape[0] == 1, "Image condition latents must be a single latent"
             assert "I2V" in pipeline.get("model_name", ""), "Image condition latents only supported for I2V models"
         else:
             assert "I2V" not in pipeline.get("model_name", ""), "Image condition latents required for I2V models"
