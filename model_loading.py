@@ -113,6 +113,9 @@ class DownloadAndLoadCogVideoModel:
     def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", 
                   enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None, compile_args=None, 
                   attention_mode="sdpa", load_device="main_device"):
+        
+        if precision == "fp16" and "1.5" in model:
+            raise ValueError("1.5 models do not work in fp16")
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
