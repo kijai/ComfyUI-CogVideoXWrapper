@@ -573,10 +573,10 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         p_t = self.config.patch_size_t
         # We know that the hidden states height and width will always be divisible by patch_size.
         # But, the number of frames may not be divisible by patch_size_t. So, we pad with the beginning frames.
-        if p_t is not None:
-            remaining_frames = 0 if num_frames % 2 == 0 else 1
-            first_frame = hidden_states[:, :1].repeat(1, 1 + remaining_frames, 1, 1, 1)
-            hidden_states = torch.cat([first_frame, hidden_states[:, 1:]], dim=1)
+        # if p_t is not None:
+        #     remaining_frames = 0 if num_frames % 2 == 0 else 1
+        #     first_frame = hidden_states[:, :1].repeat(1, 1 + remaining_frames, 1, 1, 1)
+        #     hidden_states = torch.cat([first_frame, hidden_states[:, 1:]], dim=1)
 
        
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
@@ -711,7 +711,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
                 )
                 output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
-                output = output[:, remaining_frames:]
+                #output = output[:, remaining_frames:]
 
             if self.fastercache_counter >= self.fastercache_start_step + 1: 
                 (bb, tt, cc, hh, ww) = output.shape

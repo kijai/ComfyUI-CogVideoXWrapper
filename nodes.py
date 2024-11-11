@@ -1004,7 +1004,7 @@ class CogVideoDecode:
             vae._clear_fake_context_parallel_cache()
         except:
             pass
-        frames = vae.decode(latents).sample
+        frames = vae.decode(latents[:, :, pipeline["pipe"].additional_frames:]).sample
         vae.disable_tiling()
         if not pipeline["cpu_offloading"]:
             vae.to(offload_device)

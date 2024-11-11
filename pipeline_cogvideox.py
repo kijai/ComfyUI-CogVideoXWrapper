@@ -434,6 +434,8 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         width = width or self.transformer.config.sample_size * self.vae_scale_factor_spatial
         num_videos_per_prompt = 1
 
+        self.num_frames = num_frames
+
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             height,
@@ -463,6 +465,14 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
 
         # 5. Prepare latents.
         latent_channels = self.vae.config.latent_channels
+        latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+        # For CogVideoX 1.5, the latent frames should be padded to make it divisible by patch_size_t
+        patch_size_t = self.transformer.config.patch_size_t
+        self.additional_frames = 0
+        if patch_size_t is not None and latent_frames % patch_size_t != 0:
+            self.additional_frames = patch_size_t - latent_frames % patch_size_t
+            num_frames += self.additional_frames * self.vae_scale_factor_temporal
+
 
         #if latents is None and num_frames == t_tile_length:
         #    num_frames += 1
@@ -503,8 +513,12 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
                 width // self.vae_scale_factor_spatial,
                 )
                 latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae.dtype)
-
                 image_cond_latents = torch.cat([image_cond_latents[:, 0, :, :, :].unsqueeze(1), latent_padding, image_cond_latents[:, -1, :, :, :].unsqueeze(1)], dim=1)
+                # Select the first frame along the second dimension
+                if self.transformer.config.patch_size_t is not None:
+                    first_frame = image_cond_latents[:, : image_latents.size(1) % self.transformer.config.patch_size_t, ...]
+                    image_cond_latents = torch.cat([first_frame, image_latents], dim=1)
+
                 logger.info(f"image cond latents shape: {image_cond_latents.shape}")
             else:
                 logger.info("Only one image conditioning frame received, img2vid")
@@ -597,8 +611,8 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         if tora is not None:
             trajectory_length = tora["video_flow_features"].shape[1]
             logger.info(f"Tora trajectory length: {trajectory_length}")
-            if trajectory_length != latents.shape[1]:
-                raise ValueError(f"Tora trajectory length {trajectory_length} does not match inpaint_latents count {latents.shape[2]}")
+            #if trajectory_length != latents.shape[1]:
+            #    raise ValueError(f"Tora trajectory length {trajectory_length} does not match inpaint_latents count {latents.shape[2]}")
             for module in self.transformer.fuser_list:
                 for param in module.parameters():
                     param.data = param.data.to(device)
