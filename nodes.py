@@ -842,7 +842,7 @@ class CogVideoSampler:
             context_options is not None
         ), "1.0 I2V model can only do 49 frames"
         if image_cond_latents is not None:
-            assert image_cond_latents.shape[0] == 1, "Image condition latents must be a single latent"
+            assert image_cond_latents["samples"].shape[0] == 1, "Image condition latents must be a single latent"
             assert "I2V" in pipeline.get("model_name", ""), "Image condition latents only supported for I2V models"
         else:
             assert "I2V" not in pipeline.get("model_name", ""), "Image condition latents required for I2V models"
