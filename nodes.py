@@ -346,7 +346,7 @@ class CogVideoImageEncode:
             "image": ("IMAGE", ),
             },
             "optional": {
-                "chunk_size": ("INT", {"default": 16, "min": 4}),
+                "chunk_size": ("INT", {"default": 16, "min": 4, "tooltip": "How many images to encode at once, lower values use less memory"}),
                 "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
                 "mask": ("MASK", ),
                 "noise_aug_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001, "tooltip": "Augment image with noise"}),
@@ -806,6 +806,7 @@ class CogVideoSampler:
                 "controlnet": ("COGVIDECONTROLNET",),
                 "tora_trajectory": ("TORAFEATURES", ),
                 "fastercache": ("FASTERCACHEARGS", ),
+                #"sigmas": ("SIGMAS", ),
             }
         }
 
@@ -879,6 +880,9 @@ class CogVideoSampler:
             cfg = [cfg for _ in range(steps)]
         else:
             assert len(cfg) == steps, "Length of cfg list must match number of steps"
+
+        # if sigmas is not None:
+        #     sigma_list = sigmas.tolist()
   
         autocastcondition = not pipeline["onediff"] or not dtype == torch.float32
         autocast_context = torch.autocast(mm.get_autocast_device(device), dtype=dtype) if autocastcondition else nullcontext()
@@ -889,6 +893,7 @@ class CogVideoSampler:
                 width = width,
                 num_frames = num_frames,
                 guidance_scale=cfg,
+                #sigmas=sigma_list if sigmas is not None else None,
                 latents=samples["samples"] if samples is not None else None,
                 image_cond_latents=image_cond_latents["samples"] if image_cond_latents is not None else None,
                 denoise_strength=denoise_strength,

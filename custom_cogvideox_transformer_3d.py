@@ -425,9 +425,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.time_proj = Timesteps(inner_dim, flip_sin_to_cos, freq_shift)
         self.time_embedding = TimestepEmbedding(inner_dim, time_embed_dim, timestep_activation_fn)
 
+        self.ofs_proj = None
         self.ofs_embedding = None
 
         if ofs_embed_dim:
+            self.ofs_proj = Timesteps(ofs_embed_dim, flip_sin_to_cos, freq_shift)
             self.ofs_embedding = TimestepEmbedding(ofs_embed_dim, ofs_embed_dim, timestep_activation_fn) # same as time embeddings, for ofs
 
         # 3. Define spatio-temporal transformers blocks
@@ -547,6 +549,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         encoder_hidden_states: torch.Tensor,
         timestep: Union[int, float, torch.LongTensor],
         timestep_cond: Optional[torch.Tensor] = None,
+        ofs: Optional[Union[int, float, torch.LongTensor]] = None,
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         controlnet_states: torch.Tensor = None,
         controlnet_weights: Optional[Union[float, int, list, np.ndarray, torch.FloatTensor]] = 1.0,
@@ -563,26 +566,21 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=hidden_states.dtype)
+
         emb = self.time_embedding(t_emb, timestep_cond)
         if self.ofs_embedding is not None: #1.5 I2V
-            emb_ofs = self.ofs_embedding(emb, timestep_cond)
-            emb = emb + emb_ofs
+            ofs_emb = self.ofs_proj(ofs)
+            ofs_emb = ofs_emb.to(dtype=hidden_states.dtype)
+            ofs_emb = self.ofs_embedding(ofs_emb)
+            emb = emb + ofs_emb
 
         # 2. Patch embedding
         p = self.config.patch_size
         p_t = self.config.patch_size_t
-        # We know that the hidden states height and width will always be divisible by patch_size.
-        # But, the number of frames may not be divisible by patch_size_t. So, we pad with the beginning frames.
-        # if p_t is not None:
-        #     remaining_frames = 0 if num_frames % 2 == 0 else 1
-        #     first_frame = hidden_states[:, :1].repeat(1, 1 + remaining_frames, 1, 1, 1)
-        #     hidden_states = torch.cat([first_frame, hidden_states[:, 1:]], dim=1)
-
        
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
         hidden_states = self.embedding_dropout(hidden_states)
 
-      
         text_seq_length = encoder_hidden_states.shape[1]
         encoder_hidden_states = hidden_states[:, :text_seq_length]
         hidden_states = hidden_states[:, text_seq_length:]
@@ -639,7 +637,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
                 )
                 output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
-                output = output[:, remaining_frames:]
             
             (bb, tt, cc, hh, ww) = output.shape
             cond = rearrange(output, "B T C H W -> (B T) C H W", B=bb, C=cc, T=tt, H=hh, W=ww)
@@ -711,7 +708,6 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
                 )
                 output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
-                #output = output[:, remaining_frames:]
 
             if self.fastercache_counter >= self.fastercache_start_step + 1: 
                 (bb, tt, cc, hh, ww) = output.shape

@@ -369,6 +369,7 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 6,
         denoise_strength: float = 1.0,
+        sigmas: Optional[List[float]] = None,
         num_videos_per_prompt: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -429,7 +430,7 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
         """
-
+        
         height = height or self.transformer.config.sample_size * self.vae_scale_factor_spatial
         width = width or self.transformer.config.sample_size * self.vae_scale_factor_spatial
         num_videos_per_prompt = 1
@@ -460,7 +461,10 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         prompt_embeds = prompt_embeds.to(self.vae.dtype)
 
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        if sigmas is None:
+            timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        else:
+            timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, sigmas=sigmas, device=device)
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latents.
@@ -499,7 +503,6 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
             freenoise=freenoise,
         )
         latents = latents.to(self.vae.dtype)
-        #print("latents", latents.shape)
 
         # 5.5.
         if image_cond_latents is not None:
@@ -579,6 +582,9 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
                 if self.transformer.config.use_rotary_positional_embeddings
                 else None
             )
+            # 7.6. Create ofs embeds if required
+            ofs_emb = None if self.transformer.config.ofs_embed_dim is None else latents.new_full((1,), fill_value=2.0)
+
             if tora is not None and do_classifier_free_guidance:
                 video_flow_features = tora["video_flow_features"].repeat(1, 2, 1, 1, 1).contiguous()
 
@@ -616,6 +622,8 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
             for module in self.transformer.fuser_list:
                 for param in module.parameters():
                     param.data = param.data.to(device)
+
+        logger.info(f"Sampling {num_frames} frames in {latent_frames} latent frames at {width}x{height} with {num_inference_steps} inference steps")
 
         # 9. Denoising loop
         comfy_pbar = ProgressBar(len(timesteps))
@@ -873,6 +881,7 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
                         encoder_hidden_states=prompt_embeds,
                         timestep=timestep,
                         image_rotary_emb=image_rotary_emb,
+                        ofs=ofs_emb,
                         return_dict=False,
                         controlnet_states=controlnet_states,
                         controlnet_weights=control_weights,
