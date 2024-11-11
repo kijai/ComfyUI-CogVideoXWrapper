@@ -535,6 +535,44 @@ class DownloadAndLoadCogVideoGGUFModel:
         }
 
         return (pipeline,)
+    
+#revion VAE
+
+class CogVideoXVAELoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model_name": (folder_paths.get_filename_list("vae"), {"tooltip": "The name of the checkpoint (vae) to load."}),
+            },
+            "optional": {
+                "precision": (["fp16", "fp32", "bf16"],
+                    {"default": "bf16"}
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("VAE",)
+    RETURN_NAMES = ("vae", )
+    FUNCTION = "loadmodel"
+    CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "Loads CogVideoX VAE model from 'ComfyUI/models/vae'"
+
+    def loadmodel(self, model_name, precision):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+
+        dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
+        with open(os.path.join(script_directory, 'configs', 'vae_config.json')) as f:
+            vae_config = json.load(f)
+        model_path = folder_paths.get_full_path("vae", model_name)
+        vae_sd = load_torch_file(model_path)
+
+        vae = AutoencoderKLCogVideoX.from_config(vae_config).to(dtype).to(offload_device)
+        vae.load_state_dict(vae_sd)
+
+        return (vae,)
+    
 #region Tora
 class DownloadAndLoadToraModel:
     @classmethod
@@ -698,6 +736,7 @@ NODE_CLASS_MAPPINGS = {
     "DownloadAndLoadCogVideoControlNet": DownloadAndLoadCogVideoControlNet,
     "DownloadAndLoadToraModel": DownloadAndLoadToraModel,
     "CogVideoLoraSelect": CogVideoLoraSelect,
+    "CogVideoXVAELoader": CogVideoXVAELoader,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -705,4 +744,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoControlNet": "(Down)load CogVideo ControlNet",
     "DownloadAndLoadToraModel": "(Down)load Tora Model",
     "CogVideoLoraSelect": "CogVideo LoraSelect",
+    "CogVideoXVAELoader": "CogVideoX VAE Loader",
     }

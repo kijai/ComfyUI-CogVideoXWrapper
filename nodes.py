@@ -350,6 +350,7 @@ class CogVideoImageEncode:
                 "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
                 "mask": ("MASK", ),
                 "noise_aug_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001, "tooltip": "Augment image with noise"}),
+                "vae_override" : ("VAE", {"default": None, "tooltip": "Override the VAE model in the pipeline"}),
             },
         }
 
@@ -358,15 +359,21 @@ class CogVideoImageEncode:
     FUNCTION = "encode"
     CATEGORY = "CogVideoWrapper"
 
-    def encode(self, pipeline, image, chunk_size=8, enable_tiling=False, mask=None, noise_aug_strength=0.0):
+    def encode(self, pipeline, image, chunk_size=8, enable_tiling=False, mask=None, noise_aug_strength=0.0, vae_override=None):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         generator = torch.Generator(device=device).manual_seed(0)
 
         B, H, W, C = image.shape
 
-        vae = pipeline["pipe"].vae
+        vae = pipeline["pipe"].vae if vae_override is None else vae_override
         vae.enable_slicing()
+        model_name = pipeline.get("model_name", "")
+
+        if "1.5" in model_name or "1_5" in model_name:
+            vae_scaling_factor = 1 / vae.config.scaling_factor
+        else:
+            vae_scaling_factor = vae.config.scaling_factor
         
         if enable_tiling:
             from .mz_enable_vae_encode_tiling import enable_vae_encode_tiling
@@ -391,10 +398,14 @@ class CogVideoImageEncode:
             # input_image = input_image * (1 -mask)
         else:
             pipeline["pipe"].original_mask = None
-            
+        #input_image = input_image.permute(0, 3, 1, 2)  # B, C, H, W
+        #input_image = pipeline["pipe"].video_processor.preprocess(input_image).to(device, dtype=vae.dtype)
+        #input_image = input_image.unsqueeze(2)
+
         input_image = input_image * 2.0 - 1.0
         input_image = input_image.to(vae.dtype).to(device)
         input_image = input_image.unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
+      
         B, C, T, H, W = input_image.shape
         if noise_aug_strength > 0:
             input_image = add_noise_to_reference_video(input_image, ratio=noise_aug_strength)
@@ -417,7 +428,7 @@ class CogVideoImageEncode:
             elif hasattr(latents, "latents"):
                 latents = latents.latents
 
-            latents = vae.config.scaling_factor * latents
+            latents = vae_scaling_factor * latents
             latents = latents.permute(0, 2, 1, 3, 4)  # B, T_chunk, C, H, W
             latents_list.append(latents)
 
@@ -972,6 +983,7 @@ class CogVideoDecode:
             "tile_overlap_factor_height": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.001}),
             "tile_overlap_factor_width": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.001}),
             "auto_tile_size": ("BOOLEAN", {"default": True, "tooltip": "Auto size based on height and width, default is half the size"}),
+            "vae_override": ("VAE", {"default": None}),
             }
         }
 
@@ -980,11 +992,12 @@ class CogVideoDecode:
     FUNCTION = "decode"
     CATEGORY = "CogVideoWrapper"
 
-    def decode(self, pipeline, samples, enable_vae_tiling, tile_sample_min_height, tile_sample_min_width, tile_overlap_factor_height, tile_overlap_factor_width, auto_tile_size=True):
+    def decode(self, pipeline, samples, enable_vae_tiling, tile_sample_min_height, tile_sample_min_width, tile_overlap_factor_height, tile_overlap_factor_width, 
+               auto_tile_size=True, vae_override=None):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         latents = samples["samples"]
-        vae = pipeline["pipe"].vae
+        vae = pipeline["pipe"].vae if vae_override is None else vae_override
 
         vae.enable_slicing()
 

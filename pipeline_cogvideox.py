@@ -159,14 +159,16 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         )
         self.vae_scale_factor_temporal = (
             self.vae.config.temporal_compression_ratio if hasattr(self, "vae") and self.vae is not None else 4
-        )
+        )        
         self.original_mask = original_mask
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
+        self.video_processor.config.do_resize = False
 
         if pab_config is not None:
             set_pab_manager(pab_config)
 
         self.input_with_padding = True
+
 
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, timesteps, denoise_strength,
@@ -625,6 +627,9 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
 
         logger.info(f"Sampling {num_frames} frames in {latent_frames} latent frames at {width}x{height} with {num_inference_steps} inference steps")
 
+        from .latent_preview import prepare_callback
+        callback = prepare_callback(self.transformer, num_inference_steps)
+
         # 9. Denoising loop
         comfy_pbar = ProgressBar(len(timesteps))
         with self.progress_bar(total=len(timesteps)) as progress_bar:    
@@ -926,7 +931,10 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
 
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
-                        comfy_pbar.update(1)
+                        if callback is not None:
+                            callback(i, latents.detach()[-1], None, num_inference_steps)
+                        else:
+                            comfy_pbar.update(1)
             
 
         # Offload all models
