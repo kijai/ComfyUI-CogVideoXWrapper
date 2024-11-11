@@ -263,7 +263,7 @@ class DownloadAndLoadCogVideoModel:
                     pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
                 if fuse:
                     lora_scale = 1
-                    dimension_loras = ["orbit_left_lora", "dimensionx"] # for now dimensionx loras need scaling
+                    dimension_loras = ["orbit", "dimensionx"] # for now dimensionx loras need scaling
                     if any(item in lora[-1]["path"].lower() for item in dimension_loras):
                         lora_scale = lora_scale / lora_rank
                     pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
