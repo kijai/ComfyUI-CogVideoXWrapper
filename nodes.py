@@ -854,14 +854,14 @@ class CogVideoSampler:
             num_frames == 49 or
             context_options is not None
         ), "1.0 I2V model can only do 49 frames"
-        # if image_cond_latents is not None:
-        #     assert supports_image_conds, "Image condition latents only supported for I2V and Interpolation models"
-        #     if "I2V" in model_name:
-        #         assert image_cond_latents["samples"].shape[1] == 1, "I2V model only supports single image condition latent"
-        #     elif "interpolation" in model_name.lower():
-        #         assert image_cond_latents["samples"].shape[1] == 2, "Interpolation model needs two image condition latents"
-        # else:
-        #     assert not supports_image_conds, "Image condition latents required for I2V models"
+        if image_cond_latents is not None:
+            assert supports_image_conds, "Image condition latents only supported for I2V and Interpolation models"
+            # if "I2V" in model_name:
+            #     assert image_cond_latents["samples"].shape[1] == 1, "I2V model only supports single image condition latent"
+            # elif "interpolation" in model_name.lower():
+            #     assert image_cond_latents["samples"].shape[1] == 2, "Interpolation model needs two image condition latents"
+        else:
+            assert not supports_image_conds, "Image condition latents required for I2V models"
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
