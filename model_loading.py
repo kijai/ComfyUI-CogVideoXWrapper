@@ -258,9 +258,9 @@ class DownloadAndLoadCogVideoModel:
 
         #fp8
         if fp8_transformer == "enabled" or fp8_transformer == "fastmode":
-            params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding"}
+            params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding", "norm_k", "norm_q", "to_k.bias", "to_q.bias", "to_v.bias"}
             if "1.5" in model:
-                    params_to_keep.update({"norm1.linear.weight", "norm_k", "norm_q","ofs_embedding", "norm_final", "norm_out", "proj_out"}) 
+                    params_to_keep.update({"norm1.linear.weight", "ofs_embedding", "norm_final", "norm_out", "proj_out"}) 
             for name, param in pipe.transformer.named_parameters():
                 if not any(keyword in name for keyword in params_to_keep):
                     param.data = param.data.to(torch.float8_e4m3fn)
