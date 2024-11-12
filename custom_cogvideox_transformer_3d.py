@@ -630,11 +630,11 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             #   - However, for CogVideoX-5b-I2V also takes concatenated input image latents (number of input channels is twice the output channels)
             
             if p_t is None:
-                output = hidden_states.reshape(batch_size, num_frames, height // p, width // p, -1, p, p)
+                output = hidden_states.reshape(1, num_frames, height // p, width // p, -1, p, p)
                 output = output.permute(0, 1, 4, 2, 5, 3, 6).flatten(5, 6).flatten(3, 4)
             else:
                 output = hidden_states.reshape(
-                    batch_size, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
+                    1, (num_frames + p_t - 1) // p_t, height // p, width // p, -1, p_t, p, p
                 )
                 output = output.permute(0, 1, 5, 4, 2, 6, 3, 7).flatten(6, 7).flatten(4, 5).flatten(1, 2)
             
