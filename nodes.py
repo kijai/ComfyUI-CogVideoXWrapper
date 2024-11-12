@@ -1180,6 +1180,8 @@ class CogVideoXFunSampler:
             pipe.transformer.fastercache_lf_step = fastercache["lf_step"]
             pipe.transformer.fastercache_hf_step = fastercache["hf_step"]
             pipe.transformer.fastercache_device = fastercache["cache_device"]
+            pipe.transformer.fastercache_num_blocks_to_cache = fastercache["num_blocks_to_cache"]
+            log.info(f"FasterCache enabled for {pipe.transformer.fastercache_num_blocks_to_cache} blocks out of {len(pipe.transformer.transformer_blocks)}")
         else:
             pipe.transformer.use_fastercache = False
             pipe.transformer.fastercache_counter = 0
@@ -1187,7 +1189,7 @@ class CogVideoXFunSampler:
         generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
         autocastcondition = not pipeline["onediff"] or not dtype == torch.float32
-        autocast_context = torch.autocast(mm.get_autocast_device(device)) if autocastcondition else nullcontext()
+        autocast_context = torch.autocast(mm.get_autocast_device(device), dtype=dtype) if autocastcondition else nullcontext()
         with autocast_context:
             video_length = int((video_length - 1) // pipe.vae.config.temporal_compression_ratio * pipe.vae.config.temporal_compression_ratio) + 1 if video_length != 1 else 1
             if vid2vid_images is not None:

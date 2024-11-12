@@ -472,8 +472,15 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         # 5. Prepare latents.
         latent_channels = self.vae.config.latent_channels
         latent_frames = (num_frames - 1) // self.vae_scale_factor_temporal + 1
+
         # For CogVideoX 1.5, the latent frames should be padded to make it divisible by patch_size_t
-        patch_size_t = self.transformer.config.patch_size_t
+        patch_size_t = getattr(self.transformer.config, "patch_size_t", None)
+        if patch_size_t is None:
+            self.transformer.config.patch_size_t = None
+        ofs_embed_dim = getattr(self.transformer.config, "ofs_embed_dim", None)
+        if ofs_embed_dim is None:
+            self.transformer.config.ofs_embed_dim = None
+
         self.additional_frames = 0
         if patch_size_t is not None and latent_frames % patch_size_t != 0:
             self.additional_frames = patch_size_t - latent_frames % patch_size_t
