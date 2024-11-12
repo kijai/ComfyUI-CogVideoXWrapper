@@ -235,6 +235,7 @@ class CogVideoXBlock(nn.Module):
         image_rotary_emb: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
         video_flow_feature: Optional[torch.Tensor] = None,
         fuser=None,
+        block_use_fastercache=False,
         fastercache_counter=0,
         fastercache_start_step=15,
         fastercache_device="cuda:0",
@@ -257,18 +258,32 @@ class CogVideoXBlock(nn.Module):
             del h, fuser        
         
         #region fastercache
-        B = norm_hidden_states.shape[0]
-        if fastercache_counter >= fastercache_start_step + 3 and fastercache_counter%3!=0 and self.cached_hidden_states[-1].shape[0] >= B:
-            attn_hidden_states = (
-                self.cached_hidden_states[1][:B] + 
-                (self.cached_hidden_states[1][:B] - self.cached_hidden_states[0][:B]) 
-                * 0.3
-                ).to(norm_hidden_states.device, non_blocking=True)
-            attn_encoder_hidden_states = (
-                self.cached_encoder_hidden_states[1][:B] + 
-                (self.cached_encoder_hidden_states[1][:B] - self.cached_encoder_hidden_states[0][:B])
-                 * 0.3
-                ).to(norm_hidden_states.device, non_blocking=True)
+        if block_use_fastercache:
+            B = norm_hidden_states.shape[0]
+            if fastercache_counter >= fastercache_start_step + 3 and fastercache_counter%3!=0 and self.cached_hidden_states[-1].shape[0] >= B:
+                attn_hidden_states = (
+                    self.cached_hidden_states[1][:B] + 
+                    (self.cached_hidden_states[1][:B] - self.cached_hidden_states[0][:B]) 
+                    * 0.3
+                    ).to(norm_hidden_states.device, non_blocking=True)
+                attn_encoder_hidden_states = (
+                    self.cached_encoder_hidden_states[1][:B] + 
+                    (self.cached_encoder_hidden_states[1][:B] - self.cached_encoder_hidden_states[0][:B])
+                    * 0.3
+                    ).to(norm_hidden_states.device, non_blocking=True)
+            else:
+                attn_hidden_states, attn_encoder_hidden_states = self.attn1(
+                    hidden_states=norm_hidden_states,
+                    encoder_hidden_states=norm_encoder_hidden_states,
+                    image_rotary_emb=image_rotary_emb,
+                    attention_mode=self.attention_mode,
+                )
+                if fastercache_counter == fastercache_start_step:
+                    self.cached_hidden_states = [attn_hidden_states.to(fastercache_device), attn_hidden_states.to(fastercache_device)]
+                    self.cached_encoder_hidden_states = [attn_encoder_hidden_states.to(fastercache_device), attn_encoder_hidden_states.to(fastercache_device)]
+                elif fastercache_counter > fastercache_start_step:
+                    self.cached_hidden_states[-1].copy_(attn_hidden_states.to(fastercache_device))
+                    self.cached_encoder_hidden_states[-1].copy_(attn_encoder_hidden_states.to(fastercache_device))
         else:
             attn_hidden_states, attn_encoder_hidden_states = self.attn1(
                 hidden_states=norm_hidden_states,
@@ -276,12 +291,6 @@ class CogVideoXBlock(nn.Module):
                 image_rotary_emb=image_rotary_emb,
                 attention_mode=self.attention_mode,
             )
-            if fastercache_counter == fastercache_start_step:
-                self.cached_hidden_states = [attn_hidden_states.to(fastercache_device), attn_hidden_states.to(fastercache_device)]
-                self.cached_encoder_hidden_states = [attn_encoder_hidden_states.to(fastercache_device), attn_encoder_hidden_states.to(fastercache_device)]
-            elif fastercache_counter > fastercache_start_step:
-                self.cached_hidden_states[-1].copy_(attn_hidden_states.to(fastercache_device))
-                self.cached_encoder_hidden_states[-1].copy_(attn_encoder_hidden_states.to(fastercache_device))
         
         hidden_states = hidden_states + gate_msa * attn_hidden_states
         encoder_hidden_states = encoder_hidden_states + enc_gate_msa * attn_encoder_hidden_states
@@ -477,6 +486,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.fastercache_lf_step = 40
         self.fastercache_hf_step = 30
         self.fastercache_device = "cuda"
+        self.fastercache_num_blocks_to_cache = len(self.transformer_blocks)
         self.attention_mode = attention_mode
 
     def _set_gradient_checkpointing(self, module, value=False):
@@ -577,7 +587,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # 2. Patch embedding
         p = self.config.patch_size
         p_t = self.config.patch_size_t
-       
+        
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
         hidden_states = self.embedding_dropout(hidden_states)
 
@@ -597,7 +607,9 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         image_rotary_emb=image_rotary_emb,
                         video_flow_feature=video_flow_features[i][:1] if video_flow_features is not None else None,
                         fuser = self.fuser_list[i] if self.fuser_list is not None else None,
+                        block_use_fastercache = i <= self.fastercache_num_blocks_to_cache,
                         fastercache_counter = self.fastercache_counter,
+                        fastercache_start_step = self.fastercache_start_step,
                         fastercache_device = self.fastercache_device
                     )
 
@@ -665,7 +677,9 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     image_rotary_emb=image_rotary_emb,
                     video_flow_feature=video_flow_features[i] if video_flow_features is not None else None,
                     fuser = self.fuser_list[i] if self.fuser_list is not None else None,
+                    block_use_fastercache = i <= self.fastercache_num_blocks_to_cache,
                     fastercache_counter = self.fastercache_counter,
+                    fastercache_start_step = self.fastercache_start_step,
                     fastercache_device = self.fastercache_device
                 )
                 #has_nan = torch.isnan(hidden_states).any()
