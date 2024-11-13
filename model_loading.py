@@ -350,8 +350,6 @@ class DownloadAndLoadCogVideoGGUFModel:
     def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload, 
                   pab_config=None, block_edit=None, compile="disabled", attention_mode="sdpa"):
 
-        check_diffusers_version()
-
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
@@ -597,9 +595,6 @@ class DownloadAndLoadToraModel:
     DESCRIPTION = "Downloads and loads the the Tora model from Huggingface to 'ComfyUI/models/CogVideo/CogVideoX-5b-Tora'"
 
     def loadmodel(self, model):
-        
-        check_diffusers_version()
-
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
