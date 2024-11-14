@@ -20,8 +20,8 @@ import torch
 import torch.nn.functional as F
 import math
 
-from diffusers.models import AutoencoderKLCogVideoX#, CogVideoXTransformer3DModel
-#from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.models import AutoencoderKLCogVideoX
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
@@ -34,10 +34,6 @@ from .custom_cogvideox_transformer_3d import CogVideoXTransformer3DModel
 from comfy.utils import ProgressBar
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-from .videosys.core.pipeline import VideoSysPipeline
-from .videosys.cogvideox_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelPAB
-from .videosys.core.pab_mgr import set_pab_manager
 
 def get_resize_crop_region_for_grid(src, tgt_width, tgt_height):
     tw = tgt_width
@@ -115,7 +111,7 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
+class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
 
@@ -144,10 +140,9 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
     def __init__(
         self,
         vae: AutoencoderKLCogVideoX,
-        transformer: Union[CogVideoXTransformer3DModel, CogVideoXTransformer3DModelPAB],
+        transformer: CogVideoXTransformer3DModel,
         scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
         original_mask = None,
-        pab_config = None
     ):
         super().__init__()
 
@@ -163,9 +158,6 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         self.original_mask = original_mask
         self.video_processor = VideoProcessor(vae_scale_factor=self.vae_scale_factor_spatial)
         self.video_processor.config.do_resize = False
-
-        if pab_config is not None:
-            set_pab_manager(pab_config)
 
         self.input_with_padding = True
 
@@ -289,29 +281,6 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
             self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps.to(device), num_inference_steps - t_start
-    
-    def _gaussian_weights(self, t_tile_length, t_batch_size):
-        from numpy import pi, exp, sqrt
-
-        var = 0.01
-        midpoint = (t_tile_length - 1) / 2  # -1 because index goes from 0 to latent_width - 1
-        t_probs = [exp(-(t-midpoint)*(t-midpoint)/(t_tile_length*t_tile_length)/(2*var)) / sqrt(2*pi*var) for t in range(t_tile_length)]
-        weights = torch.tensor(t_probs)
-        weights = weights.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4).repeat(1, t_batch_size,1, 1, 1)
-        return weights
-    
-    # def fuse_qkv_projections(self) -> None:
-    #     r"""Enables fused QKV projections."""
-    #     self.fusing_transformer = True
-    #     self.transformer.fuse_qkv_projections()
-
-    # def unfuse_qkv_projections(self) -> None:
-    #     r"""Disable QKV projection fusion if enabled."""
-    #     if not self.fusing_transformer:
-    #         logger.warning("The Transformer was not initially fused for QKV projections. Doing nothing.")
-    #     else:
-    #         self.transformer.unfuse_qkv_projections()
-    #         self.fusing_transformer = False
 
     def _prepare_rotary_positional_embeddings(
         self,
@@ -365,8 +334,6 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         height: int = 480,
         width: int = 720,
         num_frames: int = 48,
-        t_tile_length: int = 12,
-        t_tile_overlap: int = 4,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 6,
@@ -487,9 +454,6 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
             num_frames += self.additional_frames * self.vae_scale_factor_temporal
 
 
-        #if latents is None and num_frames == t_tile_length:
-        #    num_frames += 1
-
         if self.original_mask is not None:
             image_latents = latents
             original_image_latents = image_latents
@@ -569,23 +533,16 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
         # 7. context schedule and temporal tiling
-        if context_schedule is not None and context_schedule == "temporal_tiling":
-            t_tile_length = context_frames
-            t_tile_overlap = context_overlap
-            t_tile_weights = self._gaussian_weights(t_tile_length=t_tile_length, t_batch_size=1).to(latents.device).to(self.vae.dtype)
-            use_temporal_tiling = True
-            logger.info("Temporal tiling enabled")
-        elif context_schedule is not None:
+        if context_schedule is not None:
             if image_cond_latents is not None:
                 raise NotImplementedError("Context schedule not currently supported with image conditioning")
             logger.info(f"Context schedule enabled: {context_frames} frames, {context_stride} stride, {context_overlap} overlap")
-            use_temporal_tiling = False
             use_context_schedule = True
             from .cogvideox_fun.context import get_context_scheduler
             context = get_context_scheduler(context_schedule)
+            #todo ofs embeds?
 
         else:
-            use_temporal_tiling = False
             use_context_schedule = False
             logger.info("Temporal tiling and context schedule disabled")
             # 7.5. Create rotary embeds if required
@@ -647,100 +604,8 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-                if use_temporal_tiling and isinstance(self.scheduler, CogVideoXDDIMScheduler):
-                    #temporal tiling code based on https://github.com/mayuelala/FollowYourEmoji/blob/main/models/video_pipeline.py
-                    # =====================================================
-                    grid_ts = 0
-                    cur_t = 0
-                    while cur_t < latents.shape[1]:
-                        cur_t = max(grid_ts * t_tile_length - t_tile_overlap * grid_ts, 0) + t_tile_length
-                        grid_ts += 1
-
-                    all_t = latents.shape[1]
-                    latents_all_list = []
-                    # =====================================================
-
-                    for t_i in range(grid_ts):
-                        if t_i < grid_ts - 1:
-                            ofs_t = max(t_i * t_tile_length - t_tile_overlap * t_i, 0)
-                        if t_i == grid_ts - 1:
-                            ofs_t = all_t - t_tile_length
-
-                        input_start_t = ofs_t
-                        input_end_t = ofs_t + t_tile_length
-
-                        #latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                        #latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-
-                        image_rotary_emb = (
-                            self._prepare_rotary_positional_embeddings(height, width, t_tile_length, device)
-                            if self.transformer.config.use_rotary_positional_embeddings
-                            else None
-                        )
-
-                        latents_tile = latents[:, input_start_t:input_end_t,:, :, :]
-                        latent_model_input_tile = torch.cat([latents_tile] * 2) if do_classifier_free_guidance else latents_tile
-                        latent_model_input_tile = self.scheduler.scale_model_input(latent_model_input_tile, t)
-
-                        #t_input = t[None].to(device)
-                        t_input = t.expand(latent_model_input_tile.shape[0]) # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                
-                        # predict noise model_output
-                        noise_pred = self.transformer(
-                            hidden_states=latent_model_input_tile,
-                            encoder_hidden_states=prompt_embeds,
-                            timestep=t_input,
-                            image_rotary_emb=image_rotary_emb,
-                            return_dict=False,
-                        )[0]
-                        noise_pred = noise_pred.float()                  
-
-                        if self.do_classifier_free_guidance:
-                            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                            noise_pred = noise_pred_uncond + self._guidance_scale[i] * (noise_pred_text - noise_pred_uncond)
-
-                        # compute the previous noisy sample x_t -> x_t-1
-                        latents_tile = self.scheduler.step(noise_pred, t, latents_tile.to(self.vae.dtype), **extra_step_kwargs, return_dict=False)[0]
-                        latents_all_list.append(latents_tile)
-
-                    # ==========================================
-                    latents_all = torch.zeros(latents.shape, device=latents.device, dtype=self.vae.dtype)
-                    contributors = torch.zeros(latents.shape, device=latents.device, dtype=self.vae.dtype)
-                    # Add each tile contribution to overall latents
-                    for t_i in range(grid_ts):
-                        if t_i < grid_ts - 1:
-                            ofs_t = max(t_i * t_tile_length - t_tile_overlap * t_i, 0)
-                        if t_i == grid_ts - 1:
-                            ofs_t = all_t - t_tile_length
-
-                        input_start_t = ofs_t
-                        input_end_t = ofs_t + t_tile_length
-
-                        latents_all[:, input_start_t:input_end_t,:, :, :] += latents_all_list[t_i] * t_tile_weights
-                        contributors[:, input_start_t:input_end_t,:, :, :] += t_tile_weights
-                    
-                    latents_all /= contributors
-
-                    latents = latents_all
-                    #print("latents",latents.shape)
-                    # start diff diff
-                    if i < len(timesteps) - 1 and self.original_mask is not None:
-                        noise_timestep = timesteps[i + 1]
-                        image_latent = self.scheduler.add_noise(original_image_latents, noise, torch.tensor([noise_timestep])
-                        )
-                        mask = mask.to(latents)
-                        ts_from = timesteps[0]
-                        ts_to = timesteps[-1]
-                        threshold = (t - ts_to) / (ts_from - ts_to)
-                        mask = torch.where(mask >= threshold, mask, torch.zeros_like(mask))
-                        latents = image_latent * mask + latents * (1 - mask)
-                        # end diff diff
-                    
-                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                        progress_bar.update()
-                        comfy_pbar.update(1)
-                    # ==========================================
-                elif use_context_schedule:
+                # region context schedule sampling
+                if use_context_schedule:
                     latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                     counter = torch.zeros_like(latent_model_input)
@@ -858,7 +723,8 @@ class CogVideoXPipeline(VideoSysPipeline, CogVideoXLoraLoaderMixin):
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
                         comfy_pbar.update(1)
-    
+
+                # region sampling
                 else:
                     latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)

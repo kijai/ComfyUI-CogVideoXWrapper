@@ -12,15 +12,12 @@ from .pipeline_cogvideox import CogVideoXPipeline
 from contextlib import nullcontext
 
 from .cogvideox_fun.transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFun
-from .cogvideox_fun.fun_pab_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelFunPAB
 from .cogvideox_fun.autoencoder_magvit import AutoencoderKLCogVideoX as AutoencoderKLCogVideoXFun
 
 from .cogvideox_fun.pipeline_cogvideox_inpaint import CogVideoX_Fun_Pipeline_Inpaint
 from .cogvideox_fun.pipeline_cogvideox_control import CogVideoX_Fun_Pipeline_Control
 
-from .videosys.cogvideox_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelPAB
-
-from .utils import check_diffusers_version, remove_specific_blocks, log
+from .utils import remove_specific_blocks, log
 from comfy.utils import load_torch_file
 
 script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -95,7 +92,6 @@ class DownloadAndLoadCogVideoModel:
                 "fp8_transformer": (['disabled', 'enabled', 'fastmode'], {"default": 'disabled', "tooltip": "enabled casts the transformer to torch.float8_e4m3fn, fastmode is only for latest nvidia GPUs and requires torch 2.4.0 and cu124 minimum"}),
                 "compile": (["disabled","onediff","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
                 "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
-                "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
                 "lora": ("COGLORA", {"default": None}),
                 "compile_args":("COMPILEARGS", ),
@@ -111,7 +107,7 @@ class DownloadAndLoadCogVideoModel:
     DESCRIPTION = "Downloads and loads the selected CogVideo model from Huggingface to 'ComfyUI/models/CogVideo'"
 
     def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", 
-                  enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None, compile_args=None, 
+                  enable_sequential_cpu_offload=False, block_edit=None, lora=None, compile_args=None, 
                   attention_mode="sdpa", load_device="main_device"):
         
         if precision == "fp16" and "1.5" in model:
@@ -188,15 +184,9 @@ class DownloadAndLoadCogVideoModel:
 
         # transformer
         if "Fun" in model:
-            if pab_config is not None:
-                transformer = CogVideoXTransformer3DModelFunPAB.from_pretrained(base_path, subfolder=subfolder)
-            else:
-                transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder=subfolder)
+            transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder=subfolder)
         else:
-            if pab_config is not None:
-                transformer = CogVideoXTransformer3DModelPAB.from_pretrained(base_path, subfolder=subfolder)
-            else:
-                transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder)
+            transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder)
         
         transformer = transformer.to(dtype).to(transformer_load_device)
 
@@ -213,12 +203,12 @@ class DownloadAndLoadCogVideoModel:
         if "Fun" in model:
             vae = AutoencoderKLCogVideoXFun.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
             if "Pose" in model:
-                pipe = CogVideoX_Fun_Pipeline_Control(vae, transformer, scheduler, pab_config=pab_config)
+                pipe = CogVideoX_Fun_Pipeline_Control(vae, transformer, scheduler)
             else:
-                pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler, pab_config=pab_config)
+                pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler)
         else:
             vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
-            pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)
+            pipe = CogVideoXPipeline(vae, transformer, scheduler)
             if "cogvideox-2b-img2vid" in model:
                 pipe.input_with_padding = False
         
@@ -296,7 +286,7 @@ class DownloadAndLoadCogVideoModel:
             backend="nexfort",
             options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
             ignores=["vae"],
-            fuse_qkv_projections=True if pab_config is None else False,
+            fuse_qkv_projections= False,
             )          
         
         pipeline = {
@@ -334,7 +324,6 @@ class DownloadAndLoadCogVideoGGUFModel:
             "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
             },
             "optional": {
-                "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
                 #"lora": ("COGLORA", {"default": None}),
                 "compile": (["disabled","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
@@ -348,7 +337,7 @@ class DownloadAndLoadCogVideoGGUFModel:
     CATEGORY = "CogVideoWrapper"
 
     def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload, 
-                  pab_config=None, block_edit=None, compile="disabled", attention_mode="sdpa"):
+                  block_edit=None, compile="disabled", attention_mode="sdpa"):
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
@@ -396,10 +385,7 @@ class DownloadAndLoadCogVideoGGUFModel:
                     transformer_config["in_channels"] = 32
                 else:
                     transformer_config["in_channels"] = 33
-                if pab_config is not None:
-                    transformer = CogVideoXTransformer3DModelFunPAB.from_config(transformer_config)
-                else:
-                    transformer = CogVideoXTransformer3DModelFun.from_config(transformer_config)
+                transformer = CogVideoXTransformer3DModelFun.from_config(transformer_config)
             elif "I2V" in model or "Interpolation" in model:
                 transformer_config["in_channels"] = 32
                 if "1_5" in model:
@@ -409,16 +395,10 @@ class DownloadAndLoadCogVideoGGUFModel:
                     transformer_config["patch_bias"] = False
                     transformer_config["sample_height"] = 96
                     transformer_config["sample_width"] = 170
-                if pab_config is not None:
-                    transformer = CogVideoXTransformer3DModelPAB.from_config(transformer_config)
-                else:
-                    transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
+                transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
             else:
                 transformer_config["in_channels"] = 16
-                if pab_config is not None:
-                    transformer = CogVideoXTransformer3DModelPAB.from_config(transformer_config)
-                else:
-                    transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
+                transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
 
             params_to_keep = {"patch_embed", "pos_embedding", "time_embedding"}
             if "2b" in model:
@@ -476,13 +456,13 @@ class DownloadAndLoadCogVideoGGUFModel:
             vae = AutoencoderKLCogVideoXFun.from_config(vae_config).to(vae_dtype).to(offload_device)
             vae.load_state_dict(vae_sd)
             if "Pose" in model:
-                pipe = CogVideoX_Fun_Pipeline_Control(vae, transformer, scheduler, pab_config=pab_config)
+                pipe = CogVideoX_Fun_Pipeline_Control(vae, transformer, scheduler)
             else:
-                pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler, pab_config=pab_config)
+                pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler)
         else:
             vae = AutoencoderKLCogVideoX.from_config(vae_config).to(vae_dtype).to(offload_device)
             vae.load_state_dict(vae_sd)
-            pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)
+            pipe = CogVideoXPipeline(vae, transformer, scheduler)
 
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()

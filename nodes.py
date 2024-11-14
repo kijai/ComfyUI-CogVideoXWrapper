@@ -44,8 +44,6 @@ from PIL import Image
 import numpy as np
 import json
 
-
-
 script_directory = os.path.dirname(os.path.abspath(__file__))
 
 if not "CogVideo" in folder_paths.folder_names_and_paths:
@@ -53,61 +51,11 @@ if not "CogVideo" in folder_paths.folder_names_and_paths:
 if not "cogvideox_loras" in folder_paths.folder_names_and_paths:
     folder_paths.add_model_folder_path("cogvideox_loras", os.path.join(folder_paths.models_dir, "CogVideo", "loras"))
 
-#PAB
-from .videosys.pab import CogVideoXPABConfig
-
-class CogVideoPABConfig:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {
-            "spatial_broadcast": ("BOOLEAN", {"default": True, "tooltip": "Enable Spatial PAB, highest impact"}),
-            "spatial_threshold_start": ("INT", {"default": 850, "min": 0, "max": 1000, "tooltip": "PAB Start Timestep"} ),
-            "spatial_threshold_end": ("INT", {"default": 100, "min": 0, "max": 1000, "tooltip": "PAB End Timestep"} ),
-            "spatial_range": ("INT", {"default": 2, "min": 0, "max": 10, "tooltip": "Broadcast timesteps range, higher values are faster but quality may suffer"} ),
-            "temporal_broadcast": ("BOOLEAN", {"default": False, "tooltip": "Enable Temporal PAB, medium impact"}),
-            "temporal_threshold_start": ("INT", {"default": 850, "min": 0, "max": 1000, "tooltip": "PAB Start Timestep"} ),
-            "temporal_threshold_end": ("INT", {"default": 100, "min": 0, "max": 1000, "tooltip": "PAB End Timestep"} ),
-            "temporal_range": ("INT", {"default": 4, "min": 0, "max": 10, "tooltip": "Broadcast timesteps range, higher values are faster but quality may suffer"} ),
-            "cross_broadcast": ("BOOLEAN", {"default": False, "tooltip": "Enable Cross Attention PAB, low impact"}),
-            "cross_threshold_start": ("INT", {"default": 850, "min": 0, "max": 1000, "tooltip": "PAB Start Timestep"} ),
-            "cross_threshold_end": ("INT", {"default": 100, "min": 0, "max": 1000, "tooltip": "PAB End Timestep"} ),
-            "cross_range": ("INT", {"default": 6, "min": 0, "max": 10, "tooltip": "Broadcast timesteps range, higher values are faster but quality may suffer"} ),
-
-            "steps": ("INT", {"default": 50, "min": 0, "max": 1000, "tooltip": "Should match the sampling steps"} ),
-            }
-        }
-
-    RETURN_TYPES = ("PAB_CONFIG",)
-    RETURN_NAMES = ("pab_config", )
-    FUNCTION = "config"
-    CATEGORY = "CogVideoWrapper"
-    DESCRIPTION = "EXPERIMENTAL:Pyramid Attention Broadcast (PAB) speeds up inference by mitigating redundant attention computation. Increases memory use"
-
-    def config(self, spatial_broadcast, spatial_threshold_start, spatial_threshold_end, spatial_range, 
-               temporal_broadcast, temporal_threshold_start, temporal_threshold_end, temporal_range, 
-               cross_broadcast, cross_threshold_start, cross_threshold_end, cross_range, steps):
-        
-        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
-        pab_config = CogVideoXPABConfig(
-            steps=steps, 
-            spatial_broadcast=spatial_broadcast, 
-            spatial_threshold=[spatial_threshold_end, spatial_threshold_start], 
-            spatial_range=spatial_range,
-            temporal_broadcast=temporal_broadcast,
-            temporal_threshold=[temporal_threshold_end, temporal_threshold_start],
-            temporal_range=temporal_range,
-            cross_broadcast=cross_broadcast,
-            cross_threshold=[cross_threshold_end, cross_threshold_start],
-            cross_range=cross_range
-            )
-
-        return (pab_config, )
-
 class CogVideoContextOptions:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {
-            "context_schedule": (["uniform_standard", "uniform_looped", "static_standard", "temporal_tiling"],),
+            "context_schedule": (["uniform_standard", "uniform_looped", "static_standard"],),
             "context_frames": ("INT", {"default": 48, "min": 2, "max": 100, "step": 1, "tooltip": "Number of pixel frames in the context, NOTE: the latent space has 4 frames in 1"} ),
             "context_stride": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context stride as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
             "context_overlap": ("INT", {"default": 4, "min": 4, "max": 100, "step": 1, "tooltip": "Context overlap as pixel frames, NOTE: the latent space has 4 frames in 1"} ),
@@ -1152,9 +1100,6 @@ class CogVideoXFunSampler:
             end_img = [to_pil(_end_img) for _end_img in end_img] if end_img is not None else None       
         
         # Load Sampler
-        if context_options is not None and context_options["context_schedule"] == "temporal_tiling":
-            log.info("Temporal tiling enabled, changing scheduler to CogVideoXDDIM")
-            scheduler="CogVideoXDDIM"
         scheduler_config = pipeline["scheduler_config"]
         if scheduler in scheduler_mapping:
             noise_scheduler = scheduler_mapping[scheduler].from_config(scheduler_config)
@@ -1282,7 +1227,7 @@ class CogVideoXFunControlSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, pipeline, positive, negative, seed, steps, cfg, scheduler, control_latents, 
-                control_strength=1.0, control_start_percent=0.0, control_end_percent=1.0, t_tile_length=16, t_tile_overlap=8, 
+                control_strength=1.0, control_start_percent=0.0, control_end_percent=1.0, 
                 samples=None, denoise_strength=1.0, context_options=None):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
@@ -1306,9 +1251,6 @@ class CogVideoXFunControlSampler:
 
         # Load Sampler
         scheduler_config = pipeline["scheduler_config"]
-        if context_options is not None and context_options["context_schedule"] == "temporal_tiling":
-            log.info("Temporal tiling enabled, changing scheduler to CogVideoXDDIM")
-            scheduler="CogVideoXDDIM"
         if scheduler in scheduler_mapping:
             noise_scheduler = scheduler_mapping[scheduler].from_config(scheduler_config)
             pipe.scheduler = noise_scheduler
@@ -1427,7 +1369,6 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoXFunVid2VidSampler": CogVideoXFunVid2VidSampler,
     "CogVideoXFunControlSampler": CogVideoXFunControlSampler,
     "CogVideoTextEncodeCombine": CogVideoTextEncodeCombine,
-    "CogVideoPABConfig": CogVideoPABConfig,
     "CogVideoTransformerEdit": CogVideoTransformerEdit,
     "CogVideoControlImageEncode": CogVideoControlImageEncode,
     "CogVideoContextOptions": CogVideoContextOptions,
@@ -1450,7 +1391,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoXFunVid2VidSampler": "CogVideoXFun Vid2Vid Sampler",
     "CogVideoXFunControlSampler": "CogVideoXFun Control Sampler",
     "CogVideoTextEncodeCombine": "CogVideo TextEncode Combine",
-    "CogVideoPABConfig": "CogVideo PABConfig",
     "CogVideoTransformerEdit": "CogVideo TransformerEdit",
     "CogVideoControlImageEncode": "CogVideo Control ImageEncode",
     "CogVideoContextOptions": "CogVideo Context Options",

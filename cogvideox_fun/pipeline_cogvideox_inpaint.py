@@ -33,11 +33,6 @@ from diffusers.video_processor import VideoProcessor
 from diffusers.image_processor import VaeImageProcessor
 from einops import rearrange
 
-from ..videosys.core.pipeline import VideoSysPipeline
-from ..videosys.cogvideox_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelPAB
-from ..videosys.core.pab_mgr import set_pab_manager
-
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
@@ -206,7 +201,7 @@ class CogVideoX_Fun_PipelineOutput(BaseOutput):
     videos: torch.Tensor
 
 
-class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
+class CogVideoX_Fun_Pipeline_Inpaint(DiffusionPipeline):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
 
@@ -236,7 +231,6 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
         vae: AutoencoderKLCogVideoX,
         transformer: CogVideoXTransformer3DModel,
         scheduler: Union[CogVideoXDDIMScheduler, CogVideoXDPMScheduler],
-        pab_config = None
     ):
         super().__init__()
 
@@ -257,9 +251,6 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
         self.mask_processor = VaeImageProcessor(
             vae_scale_factor=self.vae_scale_factor, do_normalize=False, do_binarize=True, do_convert_grayscale=True
         )
-
-        if pab_config is not None:
-            set_pab_manager(pab_config)
 
     def prepare_latents(
         self, 
@@ -432,16 +423,6 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
         if accepts_generator:
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
-    
-    def _gaussian_weights(self, t_tile_length, t_batch_size):
-        from numpy import pi, exp, sqrt
-
-        var = 0.01
-        midpoint = (t_tile_length - 1) / 2  # -1 because index goes from 0 to latent_width - 1
-        t_probs = [exp(-(t-midpoint)*(t-midpoint)/(t_tile_length*t_tile_length)/(2*var)) / sqrt(2*pi*var) for t in range(t_tile_length)]
-        weights = torch.tensor(t_probs)
-        weights = weights.unsqueeze(0).unsqueeze(2).unsqueeze(3).unsqueeze(4).repeat(1, t_batch_size,1, 1, 1)
-        return weights
     
     # Copied from diffusers.pipelines.latte.pipeline_latte.LattePipeline.check_inputs
     def check_inputs(
@@ -866,22 +847,14 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Create rotary embeds if required
-        if context_schedule is not None and context_schedule == "temporal_tiling":
-            t_tile_length = context_frames
-            t_tile_overlap = context_overlap
-            t_tile_weights = self._gaussian_weights(t_tile_length=t_tile_length, t_batch_size=1).to(latents.device).to(self.vae.dtype)
-            use_temporal_tiling = True
-            print("Temporal tiling enabled")
-        elif context_schedule is not None:
+        if context_schedule is not None:
             print(f"Context schedule enabled: {context_frames} frames, {context_stride} stride, {context_overlap} overlap")
-            use_temporal_tiling = False
             use_context_schedule = True
             from .context import get_context_scheduler
             context = get_context_scheduler(context_schedule)
         else:
-            use_temporal_tiling = False
             use_context_schedule = False
-            print("Temporal tiling and context schedule disabled")
+            print("context schedule disabled")
             # 7. Create rotary embeds if required
             image_rotary_emb = (
                 self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device)
@@ -915,87 +888,7 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                 if self.interrupt:
                     continue
 
-                if use_temporal_tiling and isinstance(self.scheduler, CogVideoXDDIMScheduler):
-                    #temporal tiling code based on https://github.com/mayuelala/FollowYourEmoji/blob/main/models/video_pipeline.py
-                    # =====================================================
-                    grid_ts = 0
-                    cur_t = 0
-                    while cur_t < latents.shape[1]:
-                        cur_t = max(grid_ts * t_tile_length - t_tile_overlap * grid_ts, 0) + t_tile_length
-                        grid_ts += 1
-
-                    all_t = latents.shape[1]
-                    latents_all_list = []
-                    # =====================================================
-
-                    image_rotary_emb = (
-                            self._prepare_rotary_positional_embeddings(height, width, t_tile_length, device)
-                            if self.transformer.config.use_rotary_positional_embeddings
-                            else None
-                        )
-
-                    for t_i in range(grid_ts):
-                        if t_i < grid_ts - 1:
-                            ofs_t = max(t_i * t_tile_length - t_tile_overlap * t_i, 0)
-                        if t_i == grid_ts - 1:
-                            ofs_t = all_t - t_tile_length
-
-                        input_start_t = ofs_t
-                        input_end_t = ofs_t + t_tile_length
-
-                        latents_tile = latents[:, input_start_t:input_end_t,:, :, :]
-                        inpaint_latents_tile = inpaint_latents[:, input_start_t:input_end_t, :, :, :]
-
-                        latent_model_input_tile = torch.cat([latents_tile] * 2) if do_classifier_free_guidance else latents_tile
-                        latent_model_input_tile = self.scheduler.scale_model_input(latent_model_input_tile, t)
-
-                        #t_input = t[None].to(device)
-                        t_input = t.expand(latent_model_input_tile.shape[0]) # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-                
-                        # predict noise model_output
-                        noise_pred = self.transformer(
-                            hidden_states=latent_model_input_tile,
-                            encoder_hidden_states=prompt_embeds,
-                            timestep=t_input,
-                            image_rotary_emb=image_rotary_emb,
-                            return_dict=False,
-                            inpaint_latents=inpaint_latents_tile,
-                        )[0]
-                        noise_pred = noise_pred.float()                  
-
-                        if do_classifier_free_guidance:
-                            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                            noise_pred = noise_pred_uncond + self._guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                        # compute the previous noisy sample x_t -> x_t-1
-                        latents_tile = self.scheduler.step(noise_pred, t, latents_tile.to(self.vae.dtype), **extra_step_kwargs, return_dict=False)[0]
-                        latents_all_list.append(latents_tile)
-
-                    # ==========================================
-                    latents_all = torch.zeros(latents.shape, device=latents.device, dtype=self.vae.dtype)
-                    contributors = torch.zeros(latents.shape, device=latents.device, dtype=self.vae.dtype)
-                    # Add each tile contribution to overall latents
-                    for t_i in range(grid_ts):
-                        if t_i < grid_ts - 1:
-                            ofs_t = max(t_i * t_tile_length - t_tile_overlap * t_i, 0)
-                        if t_i == grid_ts - 1:
-                            ofs_t = all_t - t_tile_length
-
-                        input_start_t = ofs_t
-                        input_end_t = ofs_t + t_tile_length
-
-                        latents_all[:, input_start_t:input_end_t,:, :, :] += latents_all_list[t_i] * t_tile_weights
-                        contributors[:, input_start_t:input_end_t,:, :, :] += t_tile_weights
-                    
-                    latents_all /= contributors
-
-                    latents = latents_all                    
-                    
-                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                        progress_bar.update()
-                        pbar.update(1)
-                    # ==========================================
-                elif use_context_schedule:
+                if use_context_schedule:
                     latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -1133,18 +1026,7 @@ class CogVideoX_Fun_Pipeline_Inpaint(VideoSysPipeline):
                         else:
                             pbar.update(1)
 
-        # if output_type == "numpy":
-        #     video = self.decode_latents(latents)
-        # elif not output_type == "latent":
-        #     video = self.decode_latents(latents)
-        #     video = self.video_processor.postprocess_video(video=video, output_type=output_type)
-        # else:
-        #     video = latents
-
         # Offload all models
         self.maybe_free_model_hooks()
-
-        # if not return_dict:
-        #     video = torch.from_numpy(video)
 
         return latents
