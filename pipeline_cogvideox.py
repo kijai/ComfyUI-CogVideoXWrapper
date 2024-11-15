@@ -26,9 +26,10 @@ from diffusers.schedulers import CogVideoXDDIMScheduler, CogVideoXDPMScheduler
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 from diffusers.video_processor import VideoProcessor
-from diffusers.models.embeddings import get_3d_rotary_pos_embed
+#from diffusers.models.embeddings import get_3d_rotary_pos_embed
 from diffusers.loaders import CogVideoXLoraLoaderMixin
 
+from .embeddings import get_3d_rotary_pos_embed
 from .custom_cogvideox_transformer_3d import CogVideoXTransformer3DModel
 
 from comfy.utils import ProgressBar
@@ -293,21 +294,36 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         grid_width = width // (self.vae_scale_factor_spatial * self.transformer.config.patch_size)
 
         p = self.transformer.config.patch_size
-        p_t = self.transformer.config.patch_size_t or 1
+        p_t = self.transformer.config.patch_size_t
 
-        base_size_width = self.transformer.config.sample_width // p
-        base_size_height = self.transformer.config.sample_height // p
-        base_num_frames = (num_frames + p_t - 1) // p_t
-    
-        grid_crops_coords = get_resize_crop_region_for_grid(
-            (grid_height, grid_width), base_size_width, base_size_height
-        )
-        freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
-            embed_dim=self.transformer.config.attention_head_dim,
-            crops_coords=grid_crops_coords,
-            grid_size=(grid_height, grid_width),
-            temporal_size=base_num_frames
-        )
+        if p_t is None:
+            # CogVideoX 1.0 I2V
+            base_size_width = self.transformer.config.sample_width // p
+            base_size_height = self.transformer.config.sample_height // p
+
+            grid_crops_coords = get_resize_crop_region_for_grid(
+                (grid_height, grid_width), base_size_width, base_size_height
+            )
+            freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
+                embed_dim=self.transformer.config.attention_head_dim,
+                crops_coords=grid_crops_coords,
+                grid_size=(grid_height, grid_width),
+                temporal_size=num_frames,
+            )
+        else:
+            # CogVideoX 1.5 I2V
+            base_size_width = self.transformer.config.sample_width // p
+            base_size_height = self.transformer.config.sample_height // p
+            base_num_frames = (num_frames + p_t - 1) // p_t
+
+            freqs_cos, freqs_sin = get_3d_rotary_pos_embed(
+                embed_dim=self.transformer.config.attention_head_dim,
+                crops_coords=None,
+                grid_size=(grid_height, grid_width),
+                temporal_size=base_num_frames,
+                grid_type="slice",
+                max_size=(base_size_height, base_size_width),
+            )
 
         freqs_cos = freqs_cos.to(device=device)
         freqs_sin = freqs_sin.to(device=device)
@@ -532,7 +548,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
       
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
 
-        # 7. context schedule and temporal tiling
+        # 7. context schedule
         if context_schedule is not None:
             if image_cond_latents is not None:
                 raise NotImplementedError("Context schedule not currently supported with image conditioning")
@@ -544,7 +560,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         else:
             use_context_schedule = False
-            logger.info("Temporal tiling and context schedule disabled")
+            logger.info("Context schedule disabled")
             # 7.5. Create rotary embeds if required
             image_rotary_emb = (
                 self._prepare_rotary_positional_embeddings(height, width, latents.size(1), device)

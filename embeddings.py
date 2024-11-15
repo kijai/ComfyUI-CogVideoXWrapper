@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from typing import Tuple, Union, Optional
-from diffusers.models.embeddings import get_3d_sincos_pos_embed
+from diffusers.models.embeddings import get_3d_sincos_pos_embed, get_1d_rotary_pos_embed
 
 
 class CogVideoXPatchEmbed(nn.Module):
@@ -131,4 +131,96 @@ class CogVideoXPatchEmbed(nn.Module):
             embeds = embeds + pos_embedding
 
         return embeds
-    
+
+def get_3d_rotary_pos_embed(
+    embed_dim,
+    crops_coords,
+    grid_size,
+    temporal_size,
+    theta: int = 10000,
+    use_real: bool = True,
+    grid_type: str = "linspace",
+    max_size: Optional[Tuple[int, int]] = None,
+) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+    """
+    RoPE for video tokens with 3D structure.
+
+    Args:
+    embed_dim: (`int`):
+        The embedding dimension size, corresponding to hidden_size_head.
+    crops_coords (`Tuple[int]`):
+        The top-left and bottom-right coordinates of the crop.
+    grid_size (`Tuple[int]`):
+        The grid size of the spatial positional embedding (height, width).
+    temporal_size (`int`):
+        The size of the temporal dimension.
+    theta (`float`):
+        Scaling factor for frequency computation.
+    grid_type (`str`):
+        Whether to use "linspace" or "slice" to compute grids.
+
+    Returns:
+        `torch.Tensor`: positional embedding with shape `(temporal_size * grid_size[0] * grid_size[1], embed_dim/2)`.
+    """
+    if use_real is not True:
+        raise ValueError(" `use_real = False` is not currently supported for get_3d_rotary_pos_embed")
+
+    if grid_type == "linspace":
+        start, stop = crops_coords
+        grid_size_h, grid_size_w = grid_size
+        grid_h = np.linspace(start[0], stop[0], grid_size_h, endpoint=False, dtype=np.float32)
+        grid_w = np.linspace(start[1], stop[1], grid_size_w, endpoint=False, dtype=np.float32)
+        grid_t = np.arange(temporal_size, dtype=np.float32)
+        grid_t = np.linspace(0, temporal_size, temporal_size, endpoint=False, dtype=np.float32)
+    elif grid_type == "slice":
+        max_h, max_w = max_size
+        grid_size_h, grid_size_w = grid_size
+        grid_h = np.arange(max_h, dtype=np.float32)
+        grid_w = np.arange(max_w, dtype=np.float32)
+        grid_t = np.arange(temporal_size, dtype=np.float32)
+    else:
+        raise ValueError("Invalid value passed for `grid_type`.")
+
+    # Compute dimensions for each axis
+    dim_t = embed_dim // 4
+    dim_h = embed_dim // 8 * 3
+    dim_w = embed_dim // 8 * 3
+
+    # Temporal frequencies
+    freqs_t = get_1d_rotary_pos_embed(dim_t, grid_t, use_real=True)
+    # Spatial frequencies for height and width
+    freqs_h = get_1d_rotary_pos_embed(dim_h, grid_h, use_real=True)
+    freqs_w = get_1d_rotary_pos_embed(dim_w, grid_w, use_real=True)
+
+    # BroadCast and concatenate temporal and spaial frequencie (height and width) into a 3d tensor
+    def combine_time_height_width(freqs_t, freqs_h, freqs_w):
+        freqs_t = freqs_t[:, None, None, :].expand(
+            -1, grid_size_h, grid_size_w, -1
+        )  # temporal_size, grid_size_h, grid_size_w, dim_t
+        freqs_h = freqs_h[None, :, None, :].expand(
+            temporal_size, -1, grid_size_w, -1
+        )  # temporal_size, grid_size_h, grid_size_2, dim_h
+        freqs_w = freqs_w[None, None, :, :].expand(
+            temporal_size, grid_size_h, -1, -1
+        )  # temporal_size, grid_size_h, grid_size_2, dim_w
+
+        freqs = torch.cat(
+            [freqs_t, freqs_h, freqs_w], dim=-1
+        )  # temporal_size, grid_size_h, grid_size_w, (dim_t + dim_h + dim_w)
+        freqs = freqs.view(
+            temporal_size * grid_size_h * grid_size_w, -1
+        )  # (temporal_size * grid_size_h * grid_size_w), (dim_t + dim_h + dim_w)
+        return freqs
+
+    t_cos, t_sin = freqs_t  # both t_cos and t_sin has shape: temporal_size, dim_t
+    h_cos, h_sin = freqs_h  # both h_cos and h_sin has shape: grid_size_h, dim_h
+    w_cos, w_sin = freqs_w  # both w_cos and w_sin has shape: grid_size_w, dim_w
+
+    if grid_type == "slice":
+        t_cos, t_sin = t_cos[:temporal_size], t_sin[:temporal_size]
+        h_cos, h_sin = h_cos[:grid_size_h], h_sin[:grid_size_h]
+        w_cos, w_sin = w_cos[:grid_size_w], w_sin[:grid_size_w]
+
+    cos = combine_time_height_width(t_cos, h_cos, w_cos)
+    sin = combine_time_height_width(t_sin, h_sin, w_sin)
+    return cos, sin

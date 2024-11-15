@@ -182,15 +182,18 @@ class DownloadAndLoadCogVideoModel:
                 local_dir_use_symlinks=False,
             )
 
-        # transformer
+        #transformer
         if "Fun" in model:
             transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder=subfolder)
         else:
             transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder)
         
         transformer = transformer.to(dtype).to(transformer_load_device)
-
         transformer.attention_mode = attention_mode
+
+        if "1.5" in model:
+            transformer.config.sample_height = 300
+            transformer.config.sample_width = 300
 
         if block_edit is not None:
             transformer = remove_specific_blocks(transformer, block_edit)
@@ -199,7 +202,7 @@ class DownloadAndLoadCogVideoModel:
             scheduler_config = json.load(f)
         scheduler = CogVideoXDDIMScheduler.from_config(scheduler_config)     
 
-        # VAE
+        #VAE
         if "Fun" in model:
             vae = AutoencoderKLCogVideoXFun.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
             if "Pose" in model:
@@ -393,8 +396,8 @@ class DownloadAndLoadCogVideoGGUFModel:
                     transformer_config["use_learned_positional_embeddings"] = False
                     transformer_config["patch_size_t"] = 2
                     transformer_config["patch_bias"] = False
-                    transformer_config["sample_height"] = 96
-                    transformer_config["sample_width"] = 170
+                    transformer_config["sample_height"] = 300
+                    transformer_config["sample_width"] = 300
                 transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
             else:
                 transformer_config["in_channels"] = 16
