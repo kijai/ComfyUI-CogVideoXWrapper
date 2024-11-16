@@ -945,7 +945,7 @@ class CogVideoDecode:
         return {"required": {
             "pipeline": ("COGVIDEOPIPE",),
             "samples": ("LATENT", ),
-            "enable_vae_tiling": ("BOOLEAN", {"default": False, "tooltip": "Drastically reduces memory use but may introduce seams"}),
+            "enable_vae_tiling": ("BOOLEAN", {"default": True, "tooltip": "Drastically reduces memory use but may introduce seams"}),
             },
             "optional": {
             "tile_sample_min_height": ("INT", {"default": 240, "min": 16, "max": 2048, "step": 8, "tooltip": "Minimum tile height, default is half the height"}),
@@ -995,7 +995,14 @@ class CogVideoDecode:
         except:
             pass
         
-        frames = vae.decode(latents[:, :, additional_frames:]).sample
+        try:
+            frames = vae.decode(latents[:, :, additional_frames:]).sample
+        except:
+            mm.soft_empty_cache()
+            log.warning("Failed to decode, retrying with tiling")
+            vae.enable_tiling()
+            frames = vae.decode(latents[:, :, additional_frames:]).sample
+
         vae.disable_tiling()
         if not pipeline["cpu_offloading"]:
             vae.to(offload_device)
