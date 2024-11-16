@@ -819,7 +819,7 @@ class CogVideoSampler:
         dtype = pipeline["dtype"]
         scheduler_config = pipeline["scheduler_config"]
         
-        if not pipeline["cpu_offloading"]:
+        if not pipeline["cpu_offloading"] and pipeline["manual_offloading"]:
             pipe.transformer.to(device)
         generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
@@ -890,7 +890,7 @@ class CogVideoSampler:
                 controlnet=controlnet,
                 tora=tora_trajectory if tora_trajectory is not None else None,
             )
-        if not pipeline["cpu_offloading"]:
+        if not pipeline["cpu_offloading"] and pipeline["manual_offloading"]:
             pipe.transformer.to(offload_device)
 
         if fastercache is not None:

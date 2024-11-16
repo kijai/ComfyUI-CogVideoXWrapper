@@ -93,9 +93,14 @@ class CogVideoXAttnProcessor2_0:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
-        query = attn.to_q(hidden_states)
-        key = attn.to_k(hidden_states)
-        value = attn.to_v(hidden_states)
+        if attention_mode != "fused_sdpa" or attention_mode != "fused_sageattn":
+            query = attn.to_q(hidden_states)
+            key = attn.to_k(hidden_states)
+            value = attn.to_v(hidden_states)
+        else:
+            qkv = attn.to_qkv(hidden_states)
+            split_size = qkv.shape[-1] // 3
+            query, key, value = torch.split(qkv, split_size, dim=-1)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -240,13 +245,14 @@ class CogVideoXBlock(nn.Module):
         fastercache_start_step=15,
         fastercache_device="cuda:0",
     ) -> torch.Tensor:
-    
+        #print("hidden_states in block: ", hidden_states.shape) #1.5: torch.Size([2, 3200, 3072]) 10.: torch.Size([2, 6400, 3072])
         text_seq_length = encoder_hidden_states.size(1)
 
         # norm & modulate
         norm_hidden_states, norm_encoder_hidden_states, gate_msa, enc_gate_msa = self.norm1(
             hidden_states, encoder_hidden_states, temb
         )
+        #print("norm_hidden_states in block: ", norm_hidden_states.shape) #torch.Size([2, 3200, 3072])
       
         # Tora Motion-guidance Fuser
         if video_flow_feature is not None:
@@ -587,13 +593,17 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         # 2. Patch embedding
         p = self.config.patch_size
         p_t = self.config.patch_size_t
+
+        #print("hidden_states before patch_embedding", hidden_states.shape) #torch.Size([2, 4, 16, 60, 90])
         
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
+        #print("hidden_states after patch_embedding", hidden_states.shape) #1.5: torch.Size([2, 2926, 3072]) #1.0: torch.Size([2, 5626, 3072])
         hidden_states = self.embedding_dropout(hidden_states)
 
         text_seq_length = encoder_hidden_states.shape[1]
         encoder_hidden_states = hidden_states[:, :text_seq_length]
         hidden_states = hidden_states[:, text_seq_length:]
+        #print("hidden_states after split", hidden_states.shape) #1.5: torch.Size([2, 2700, 3072]) #1.0: torch.Size([2, 5400, 3072])
       
         if self.use_fastercache:
             self.fastercache_counter+=1
