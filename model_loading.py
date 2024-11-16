@@ -121,7 +121,7 @@ class DownloadAndLoadCogVideoModel:
                 "precision": (["fp16", "fp32", "bf16"],
                     {"default": "bf16", "tooltip": "official recommendation is that 2b model should be fp16, 5b model should be bf16"}
                 ),
-                "fp8_transformer": (['disabled', 'enabled', 'fastmode', 'torchao_fp8dq', "torchao_fp6"], {"default": 'disabled', "tooltip": "enabled casts the transformer to torch.float8_e4m3fn, fastmode is only for latest nvidia GPUs and requires torch 2.4.0 and cu124 minimum"}),
+                "fp8_transformer": (['disabled', 'enabled', 'fastmode', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6"], {"default": 'disabled', "tooltip": "enabled casts the transformer to torch.float8_e4m3fn, fastmode is only for latest nvidia GPUs and requires torch 2.4.0 and cu124 minimum"}),
                 "compile": (["disabled","onediff","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
                 "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
@@ -301,7 +301,8 @@ class DownloadAndLoadCogVideoModel:
                 from torchao.quantization import (
                 quantize_,
                 fpx_weight_only,
-                float8_dynamic_activation_float8_weight
+                float8_dynamic_activation_float8_weight,
+                int8_dynamic_activation_int8_weight
             )
             except:
                 raise ImportError("torchao is not installed, please install torchao to use fp8dq")
@@ -316,11 +317,16 @@ class DownloadAndLoadCogVideoModel:
                 quant_func = fpx_weight_only(3, 2)
             elif "fp8dq" in fp8_transformer: #very fast on 4090 when compiled
                 quant_func = float8_dynamic_activation_float8_weight()
+            elif 'fp8dqrow' in fp8_transformer:
+                from torchao.quantization.quant_api import PerRow
+                quant_func = float8_dynamic_activation_float8_weight(granularity=PerRow())
+            elif 'int8dq' in fp8_transformer:
+                quant_func = int8_dynamic_activation_int8_weight()
         
             for i, block in enumerate(pipe.transformer.transformer_blocks):
                 if "CogVideoXBlock" in str(block):
                     quantize_(block, quant_func, filter_fn=filter_fn)
-                
+                        
             manual_offloading = False # to disable manual .to(device) calls
         
         if enable_sequential_cpu_offload:

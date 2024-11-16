@@ -739,6 +739,8 @@ class CogVideoX_Fun_Pipeline_Inpaint(DiffusionPipeline):
         num_channels_transformer = self.transformer.config.in_channels
         return_image_latents = num_channels_transformer == num_channels_latents
 
+        self.vae.to(device)
+
         latents_outputs = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -840,6 +842,9 @@ class CogVideoX_Fun_Pipeline_Inpaint(DiffusionPipeline):
                 mask = rearrange(mask, "b c f h w -> b f c h w")
 
                 inpaint_latents = None
+
+        self.vae.to(torch.device("cpu"))
+
         if comfyui_progressbar:
             pbar.update(1)
 

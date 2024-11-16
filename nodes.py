@@ -1100,10 +1100,6 @@ class CogVideoXFunSampler:
         base_path = pipeline["base_path"]
         assert "fun" in base_path.lower(), "'Unfun' models not supported in 'CogVideoXFunSampler', use the 'CogVideoSampler'"
         assert "pose" not in base_path.lower(), "'Pose' models not supported in 'CogVideoXFunSampler', use the 'CogVideoXFunControlSampler'"
-        
-
-        if not pipeline["cpu_offloading"]:
-            pipe.enable_model_cpu_offload(device=device)
 
         mm.soft_empty_cache()
 
@@ -1123,8 +1119,8 @@ class CogVideoXFunSampler:
         else:
             raise ValueError(f"Unknown scheduler: {scheduler}")
 
-        #if not pipeline["cpu_offloading"]:
-        #    pipe.transformer.to(device)
+        if not pipeline["cpu_offloading"] and pipeline["manual_offloading"]:
+            pipe.transformer.to(device)
 
         if context_options is not None:
             context_frames = context_options["context_frames"] // 4
@@ -1184,8 +1180,8 @@ class CogVideoXFunSampler:
                 noise_aug_strength = noise_aug_strength,
                 strength = vid2vid_denoise,
             )
-        #if not pipeline["cpu_offloading"]:
-        #     pipe.transformer.to(offload_device)
+        if not pipeline["cpu_offloading"] and pipeline["manual_offloading"]:
+            pipe.transformer.to(offload_device)
         #clear FasterCache
         if fastercache is not None:
             for block in pipe.transformer.transformer_blocks:
