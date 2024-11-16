@@ -5,7 +5,7 @@ import comfy.model_management as mm
 from einops import rearrange
 from contextlib import nullcontext
 
-from .utils import log, check_diffusers_version
+from .utils import log, check_diffusers_version, print_memory
 check_diffusers_version()
 from diffusers.schedulers import (
     CogVideoXDDIMScheduler, 
@@ -864,6 +864,10 @@ class CogVideoSampler:
 
         # if sigmas is not None:
         #     sigma_list = sigmas.tolist()
+        try:
+            torch.cuda.reset_peak_memory_stats(device)
+        except:
+            pass
   
         autocastcondition = not pipeline["onediff"] or not dtype == torch.float32
         autocast_context = torch.autocast(mm.get_autocast_device(device), dtype=dtype) if autocastcondition else nullcontext()
@@ -898,8 +902,13 @@ class CogVideoSampler:
                 if (hasattr, block, "cached_hidden_states") and block.cached_hidden_states is not None:
                     block.cached_hidden_states = None
                     block.cached_encoder_hidden_states = None
-                    
+
+        print_memory(device)
         mm.soft_empty_cache()
+        try:
+            torch.cuda.reset_peak_memory_stats(device)
+        except:
+            pass
 
         return (pipeline, {"samples": latents})
 
