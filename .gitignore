@@ -8,3 +8,4 @@ logs/
 *.DS_Store
 .idea
 *.pt
+tools/
