@@ -343,13 +343,10 @@ class CogVideoImageEncodeFunInP:
         
         bs = 1
         new_mask_pixel_values = []
-        print("input_image shape: ",input_image.shape)
         for i in range(0, input_image.shape[0], bs):
             mask_pixel_values_bs = input_image[i : i + bs]
             mask_pixel_values_bs = vae.encode(mask_pixel_values_bs)[0]
-            print("mask_pixel_values_bs: ",mask_pixel_values_bs.parameters.shape)
             mask_pixel_values_bs = mask_pixel_values_bs.mode()
-            print("mask_pixel_values_bs: ",mask_pixel_values_bs.shape, mask_pixel_values_bs.min(), mask_pixel_values_bs.max())
             new_mask_pixel_values.append(mask_pixel_values_bs)
         masked_image_latents = torch.cat(new_mask_pixel_values, dim = 0)
         masked_image_latents = masked_image_latents.permute(0, 2, 1, 3, 4)  # B, T, C, H, W
@@ -601,8 +598,7 @@ class CogVideoSampler:
 
         model_name = model.get("model_name", "")
         supports_image_conds = True if "I2V" in model_name or "interpolation" in model_name.lower() or "fun" in model_name.lower() else False
-
-        if "fun" in model_name.lower() and "pose" not in model_name.lower() and image_cond_latents is not None:
+        if "fun" in model_name.lower() and not ("pose" in model_name.lower() or "control" in model_name.lower()) and image_cond_latents is not None:
             assert image_cond_latents["mask"] is not None, "For fun inpaint models use CogVideoImageEncodeFunInP"
             fun_mask = image_cond_latents["mask"]
         else:
@@ -855,8 +851,8 @@ class CogVideoXFunResizeToClosestBucket:
         from .cogvideox_fun.utils import ASPECT_RATIO_512, get_closest_ratio
 
         B, H, W, C = images.shape
-        # Count most suitable height and width
-        aspect_ratio_sample_size    = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
+        # Find most suitable height and width
+        aspect_ratio_sample_size = {key : [x / 512 * base_resolution for x in ASPECT_RATIO_512[key]] for key in ASPECT_RATIO_512.keys()}
 
         closest_size, closest_ratio = get_closest_ratio(H, W, ratios=aspect_ratio_sample_size)
         height, width = [int(x / 16) * 16 for x in closest_size]

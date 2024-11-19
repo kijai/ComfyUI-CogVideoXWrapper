@@ -108,6 +108,7 @@ class DownloadAndLoadCogVideoModel:
                         "alibaba-pai/CogVideoX-Fun-V1.1-5b-InP",
                         "alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose",
                         "alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose",
+                        "alibaba-pai/CogVideoX-Fun-V1.1-5b-Control",
                         "feizhengcong/CogvideoX-Interpolation",
                         "NimVideo/cogvideox-2b-img2vid"
                     ],
@@ -233,7 +234,7 @@ class DownloadAndLoadCogVideoModel:
             transformer, 
             scheduler, 
             dtype=dtype, 
-            is_fun_inpaint=True if "fun" in model.lower() and "pose" not in model.lower() else False
+            is_fun_inpaint="fun" in model.lower() and not ("pose" in model.lower() or "control" in model.lower())
             )
         if "cogvideox-2b-img2vid" in model:
             pipe.input_with_padding = False
@@ -255,7 +256,6 @@ class DownloadAndLoadCogVideoModel:
                     adapter_weight = l['strength']
                     pipe.load_lora_weights(l['path'], weight_name=l['path'].split("/")[-1], lora_rank=lora_rank, adapter_name=adapter_name)
                     
-                    #transformer = load_lora_into_transformer(lora, transformer)
                     adapter_list.append(adapter_name)
                     adapter_weights.append(adapter_weight)
                 for l in lora:
@@ -549,7 +549,12 @@ class DownloadAndLoadCogVideoGGUFModel:
         vae = AutoencoderKLCogVideoX.from_config(vae_config).to(vae_dtype).to(offload_device)
         vae.load_state_dict(vae_sd)
         del vae_sd
-        pipe = CogVideoXPipeline(transformer, scheduler, dtype=vae_dtype)
+        pipe = CogVideoXPipeline(
+            transformer, 
+            scheduler, 
+            dtype=vae_dtype,
+            is_fun_inpaint="fun" in model.lower() and not ("pose" in model.lower() or "control" in model.lower())
+            )
 
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
@@ -675,7 +680,6 @@ class CogVideoXModelLoader:
             set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=base_dtype, value=sd[name])
         del sd
 
-
         #scheduler
         with open(scheduler_config_path) as f:
             scheduler_config = json.load(f)
@@ -692,14 +696,12 @@ class CogVideoXModelLoader:
                     module.fuse_projections(fuse=True)
         transformer.attention_mode = attention_mode
 
-        if "fun" in model_type:
-            if not "pose" in model_type:
-                raise NotImplementedError("Fun models besides pose are not supported with this loader yet")
-                pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler)
-            else:
-                pipe = CogVideoXPipeline(transformer, scheduler, dtype=base_dtype)
-        else:
-            pipe = CogVideoXPipeline(transformer, scheduler, dtype=base_dtype)
+        pipe = CogVideoXPipeline(
+            transformer, 
+            scheduler, 
+            dtype=base_dtype, 
+            is_fun_inpaint="fun" in model.lower() and not ("pose" in model.lower() or "control" in model.lower())
+            )
 
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
@@ -796,11 +798,6 @@ class CogVideoXModelLoader:
             
             manual_offloading = False # to disable manual .to(device) calls
             log.info(f"Quantized transformer blocks to {quantization}")
-        
-        # if load_device == "offload_device":
-        #     pipe.transformer.to(offload_device)
-        # else:
-        #     pipe.transformer.to(device)
 
         pipeline = {
             "pipe": pipe,
@@ -812,7 +809,6 @@ class CogVideoXModelLoader:
             "model_name": model,
             "manual_offloading": manual_offloading,
         }
-
         return (pipeline,)
     
 #region VAE

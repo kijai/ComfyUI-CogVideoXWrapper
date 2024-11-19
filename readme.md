@@ -1,5 +1,7 @@
 # WORK IN PROGRESS
 
+Spreadsheet (WIP) of supported models and their supported features: https://docs.google.com/spreadsheets/d/16eA6mSL8XkTcu9fSWkPSHfRIqyAKJbR1O99xnuGdCKY/edit?usp=sharing
+
 ## BREAKING Update8
 
 This is big one, and unfortunately to do the necessary cleanup and refactoring this will break every old workflow as they are.
