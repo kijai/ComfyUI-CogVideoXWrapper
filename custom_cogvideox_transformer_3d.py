@@ -40,10 +40,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 try:
     from sageattention import sageattn
-    
     SAGEATTN_IS_AVAILABLE = True
 except:
     SAGEATTN_IS_AVAILABLE = False
+
+from comfy.ldm.modules.attention import optimized_attention
 
 @torch.compiler.disable()
 def sageattn_func(query, key, value, attn_mask=None, dropout_p=0.0,is_causal=False):
@@ -126,13 +127,13 @@ class CogVideoXAttnProcessor2_0:
                  
         if attention_mode == "sageattn" or attention_mode == "fused_sageattn":
             hidden_states = sageattn_func(query, key, value, attn_mask=attention_mask, dropout_p=0.0,is_causal=False)
-        else:
+        elif attention_mode == "sdpa":
             hidden_states = F.scaled_dot_product_attention(
                 query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
                 )
-        #if torch.isinf(hidden_states).any():
-        #    raise ValueError(f"hidden_states after dot product has inf")
-
+        elif attention_mode == "comfy":
+            hidden_states = optimized_attention(query, key, value, mask=attention_mask, heads=attn.heads, skip_reshape=True)
+        
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
 
         # linear proj
