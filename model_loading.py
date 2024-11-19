@@ -425,7 +425,7 @@ class DownloadAndLoadCogVideoGGUFModel:
             },
             "optional": {
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
-                "compile_args":("COMPILEARGS", ),
+                #"compile_args":("COMPILEARGS", ),
                 "attention_mode": (["sdpa", "sageattn"], {"default": "sdpa"}),
             }
         }
@@ -522,12 +522,6 @@ class DownloadAndLoadCogVideoGGUFModel:
                 params_to_keep.update({"ff","norm1.linear.weight", "norm_k", "norm_q","ofs_embedding", "norm_final", "norm_out", "proj_out"})   
            from .fp8_optimization import convert_fp8_linear
            convert_fp8_linear(transformer, vae_dtype, params_to_keep=params_to_keep)
-
-        if compile_args is not None:
-            torch._dynamo.config.cache_size_limit = compile_args["dynamo_cache_size_limit"]
-            for i, block in enumerate(transformer.transformer_blocks):
-                if "CogVideoXBlock" in str(block):
-                    transformer.transformer_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
 
         with open(scheduler_path) as f:
             scheduler_config = json.load(f)
