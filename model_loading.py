@@ -1,9 +1,41 @@
 import os
-import torch
-import torch.nn as nn
 import json
 import folder_paths
 import comfy.model_management as mm
+from typing import Union
+
+def patched_write_atomic(
+    path_: str,
+    content: Union[str, bytes],
+    make_dirs: bool = False,
+    encode_utf_8: bool = False,
+) -> None:
+    # Write into temporary file first to avoid conflicts between threads
+    # Avoid using a named temporary file, as those have restricted permissions
+    from pathlib import Path
+    import os
+    import shutil
+    import threading
+    assert isinstance(
+        content, (str, bytes)
+    ), "Only strings and byte arrays can be saved in the cache"
+    path = Path(path_)
+    if make_dirs:
+        path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.parent / f".{os.getpid()}.{threading.get_ident()}.tmp"
+    write_mode = "w" if isinstance(content, str) else "wb"
+    with tmp_path.open(write_mode, encoding="utf-8" if encode_utf_8 else None) as f:
+        f.write(content)
+    shutil.copy2(src=tmp_path, dst=path) #changed to allow overwriting cache files
+    os.remove(tmp_path)
+try:
+    import torch._inductor.codecache
+    torch._inductor.codecache.write_atomic = patched_write_atomic
+except:
+    pass
+
+import torch
+import torch.nn as nn
 from .utils import check_diffusers_version, remove_specific_blocks, log
 check_diffusers_version()
 
@@ -22,6 +54,10 @@ from .cogvideox_fun.pipeline_cogvideox_control import CogVideoX_Fun_Pipeline_Con
 
 from .videosys.cogvideox_transformer_3d import CogVideoXTransformer3DModel as CogVideoXTransformer3DModelPAB
 
+from accelerate import init_empty_weights
+from accelerate.utils import set_module_tensor_to_device
+
+from .utils import remove_specific_blocks, log
 from comfy.utils import load_torch_file
 
 script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -61,7 +97,8 @@ class CogVideoLoraSelect:
         cog_loras_list.append(cog_lora)
         print(cog_loras_list)
         return (cog_loras_list,)
-
+    
+#region DownloadAndLoadCogVideoModel
 class DownloadAndLoadCogVideoModel:
     @classmethod
     def INPUT_TYPES(s):
@@ -72,6 +109,8 @@ class DownloadAndLoadCogVideoModel:
                         "THUDM/CogVideoX-2b",
                         "THUDM/CogVideoX-5b",
                         "THUDM/CogVideoX-5b-I2V",
+                        "kijai/CogVideoX-5b-1.5-T2V",
+                        "kijai/CogVideoX-5b-1.5-I2V",
                         "bertjiazheng/KoolCogVideoX-5b",
                         "kijai/CogVideoX-Fun-2b",
                         "kijai/CogVideoX-Fun-5b",
@@ -90,28 +129,33 @@ class DownloadAndLoadCogVideoModel:
                 "precision": (["fp16", "fp32", "bf16"],
                     {"default": "bf16", "tooltip": "official recommendation is that 2b model should be fp16, 5b model should be bf16"}
                 ),
-                "fp8_transformer": (['disabled', 'enabled', 'fastmode'], {"default": 'disabled', "tooltip": "enabled casts the transformer to torch.float8_e4m3fn, fastmode is only for latest nvidia GPUs and requires torch 2.4.0 and cu124 minimum"}),
-                "compile": (["disabled","onediff","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
+                "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fastmode', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6"], {"default": 'disabled', "tooltip": "enabled casts the transformer to torch.float8_e4m3fn, fastmode is only for latest nvidia GPUs and requires torch 2.4.0 and cu124 minimum"}),
                 "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
-                "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
                 "lora": ("COGLORA", {"default": None}),
                 "compile_args":("COMPILEARGS", ),
+                "attention_mode": (["sdpa", "sageattn", "fused_sdpa", "fused_sageattn"], {"default": "sdpa"}),
+                "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
             }
         }
 
-    RETURN_TYPES = ("COGVIDEOPIPE",)
-    RETURN_NAMES = ("cogvideo_pipe", )
+    RETURN_TYPES = ("COGVIDEOMODEL", "VAE",)
+    RETURN_NAMES = ("model", "vae", )
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
     DESCRIPTION = "Downloads and loads the selected CogVideo model from Huggingface to 'ComfyUI/models/CogVideo'"
 
-    def loadmodel(self, model, precision, fp8_transformer="disabled", compile="disabled", enable_sequential_cpu_offload=False, pab_config=None, block_edit=None, lora=None, compile_args=None):
+    def loadmodel(self, model, precision, quantization="disabled", compile="disabled", 
+                  enable_sequential_cpu_offload=False, block_edit=None, lora=None, compile_args=None, 
+                  attention_mode="sdpa", load_device="main_device"):
         
-        check_diffusers_version()
+        if precision == "fp16" and "1.5" in model:
+            raise ValueError("1.5 models do not currently work in fp16")
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
+        manual_offloading = True
+        transformer_load_device = device if load_device == "main_device" else offload_device
         mm.soft_empty_cache()
 
         dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
@@ -134,6 +178,8 @@ class DownloadAndLoadCogVideoModel:
                 if not os.path.exists(base_path):
                     base_path = os.path.join(download_path, (model.split("/")[-1]))
                 download_path = base_path
+            subfolder = "transformer"
+            allow_patterns = ["*transformer*", "*scheduler*", "*vae*"]
 
         elif "2b" in model:
             if 'img2vid' in model:
@@ -144,41 +190,44 @@ class DownloadAndLoadCogVideoModel:
                 base_path = os.path.join(download_path, "CogVideo2B")
                 download_path = base_path
                 repo_id = model
+            subfolder = "transformer"
+            allow_patterns = ["*transformer*", "*scheduler*", "*vae*"]
+        elif "1.5-T2V" in model or "1.5-I2V" in model:
+            base_path = os.path.join(download_path, "CogVideoX-5b-1.5")
+            download_path = base_path
+            subfolder = "transformer_T2V" if "1.5-T2V" in model else "transformer_I2V"
+            allow_patterns = [f"*{subfolder}*", "*vae*", "*scheduler*"]
+            repo_id = "kijai/CogVideoX-5b-1.5"
         else:
             base_path = os.path.join(download_path, (model.split("/")[-1]))
             download_path = base_path
             repo_id = model
-            
+            subfolder = "transformer"
+            allow_patterns = ["*transformer*", "*scheduler*", "*vae*"]
 
         if "2b" in model:
             scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
         else:
             scheduler_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
         
-        if not os.path.exists(base_path) or not os.path.exists(os.path.join(base_path, "transformer")):
+        if not os.path.exists(base_path) or not os.path.exists(os.path.join(base_path, subfolder)):
             log.info(f"Downloading model to: {base_path}")
             from huggingface_hub import snapshot_download
 
             snapshot_download(
                 repo_id=repo_id,
+                allow_patterns=allow_patterns,
                 ignore_patterns=["*text_encoder*", "*tokenizer*"],
                 local_dir=download_path,
                 local_dir_use_symlinks=False,
             )
 
-        # transformer
-        if "Fun" in model:
-            if pab_config is not None:
-                transformer = CogVideoXTransformer3DModelFunPAB.from_pretrained(base_path, subfolder="transformer")
-            else:
-                transformer = CogVideoXTransformer3DModelFun.from_pretrained(base_path, subfolder="transformer")
-        else:
-            if pab_config is not None:
-                transformer = CogVideoXTransformer3DModelPAB.from_pretrained(base_path, subfolder="transformer")
-            else:
-                transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder="transformer")
-        
-        transformer = transformer.to(dtype).to(offload_device)
+        transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder)
+        transformer = transformer.to(dtype).to(transformer_load_device)
+
+        if "1.5" in model:
+            transformer.config.sample_height = 300
+            transformer.config.sample_width = 300
 
         if block_edit is not None:
             transformer = remove_specific_blocks(transformer, block_edit)
@@ -190,26 +239,21 @@ class DownloadAndLoadCogVideoModel:
         scheduler = CogVideoXDDIMScheduler.from_config(scheduler_config)     
 
         # VAE
-        if "Fun" in model:
-            vae = AutoencoderKLCogVideoXFun.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
-            if "Pose" in model:
-                pipe = CogVideoX_Fun_Pipeline_Control(vae, transformer, scheduler, pab_config=pab_config)
-            else:
-                pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler, pab_config=pab_config)
-        else:
-            vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
-            pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)
-            if "cogvideox-2b-img2vid" in model:
-                pipe.input_with_padding = False
+        vae = AutoencoderKLCogVideoX.from_pretrained(base_path, subfolder="vae").to(dtype).to(offload_device)
+
+        #pipeline
+        pipe = CogVideoXPipeline(
+            transformer, 
+            scheduler, 
+            dtype=dtype, 
+            is_fun_inpaint=True if "fun" in model.lower() and "pose" not in model.lower() else False
+            )
+        if "cogvideox-2b-img2vid" in model:
+            pipe.input_with_padding = False
         
         #LoRAs
         if lora is not None:
-            from .lora_utils import merge_lora#, load_lora_into_transformer
-            if "fun" in model.lower():
-                for l in lora:
-                    log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
-                    transformer = merge_lora(transformer, l["path"], l["strength"])
-            else:
+            try:
                 adapter_list = []
                 adapter_weights = []
                 for l in lora:
@@ -246,46 +290,146 @@ class DownloadAndLoadCogVideoModel:
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
             
+                    lora_scale = 1
+                    dimension_loras = ["orbit", "dimensionx"] # for now dimensionx loras need scaling
+                    if any(item in lora[-1]["path"].lower() for item in dimension_loras):
+                        lora_scale = lora_scale / lora_rank
+                    pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
+            except: #Fun trainer LoRAs are loaded differently
+                from .lora_utils import merge_lora
+                for l in lora:
+                    log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
+                    transformer = merge_lora(transformer, l["path"], l["strength"])
+
+        if "fused" in attention_mode:
+            from diffusers.models.attention import Attention
+            transformer.fuse_qkv_projections = True
+            for module in transformer.modules():
+                if isinstance(module, Attention):
+                    module.fuse_projections(fuse=True)
+        transformer.attention_mode = attention_mode
+
+        if compile_args is not None:
+            pipe.transformer.to(memory_format=torch.channels_last)
+
+        #fp8
+        if quantization == "fp8_e4m3fn" or quantization == "fp8_e4m3fn_fastmode":
+            params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding", "norm_k", "norm_q", "to_k.bias", "to_q.bias", "to_v.bias"}
+            if "1.5" in model:
+                    params_to_keep.update({"norm1.linear.weight", "ofs_embedding", "norm_final", "norm_out", "proj_out"}) 
+            for name, param in pipe.transformer.named_parameters():
+                if not any(keyword in name for keyword in params_to_keep):
+                    param.data = param.data.to(torch.float8_e4m3fn)
+        
+            if quantization == "fp8_e4m3fn_fastmode":
+                from .fp8_optimization import convert_fp8_linear
+                if "1.5" in model:
+                    params_to_keep.update({"ff"}) #otherwise NaNs
+                convert_fp8_linear(pipe.transformer, dtype, params_to_keep=params_to_keep)
         
         # compilation
-        if compile == "torch":
-            pipe.transformer.to(memory_format=torch.channels_last)
-            if compile_args is not None:
-                torch._dynamo.config.cache_size_limit = compile_args["dynamo_cache_size_limit"]
-                for i, block in enumerate(pipe.transformer.transformer_blocks):
-                    if "CogVideoXBlock" in str(block):
-                        pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
-            else:
-                for i, block in enumerate(pipe.transformer.transformer_blocks):
-                    if "CogVideoXBlock" in str(block):
-                        pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=False, dynamic=False, backend="inductor")
-  
-        
-            
-        elif compile == "onediff":
-            from onediffx import compile_pipe
-            os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
-            
-            pipe = compile_pipe(
-            pipe,
-            backend="nexfort",
-            options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
-            ignores=["vae"],
-            fuse_qkv_projections=True if pab_config is None else False,
-            )          
+        if compile_args is not None:
+            torch._dynamo.config.cache_size_limit = compile_args["dynamo_cache_size_limit"]
+            for i, block in enumerate(pipe.transformer.transformer_blocks):
+                if "CogVideoXBlock" in str(block):
+                    pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
 
+        if "torchao" in quantization:
+            try:
+                from torchao.quantization import (
+                quantize_,
+                fpx_weight_only,
+                float8_dynamic_activation_float8_weight,
+                int8_dynamic_activation_int8_weight
+            )
+            except:
+                raise ImportError("torchao is not installed, please install torchao to use fp8dq")
+
+            def filter_fn(module: nn.Module, fqn: str) -> bool:
+                target_submodules = {'attn1', 'ff'} # avoid norm layers, 1.5 at least won't work with quantized norm1 #todo: test other models
+                if any(sub in fqn for sub in target_submodules):
+                    return isinstance(module, nn.Linear)
+                return False
+            
+            if "fp6" in quantization: #slower for some reason on 4090
+                quant_func = fpx_weight_only(3, 2)
+            elif "fp8dq" in quantization: #very fast on 4090 when compiled
+                quant_func = float8_dynamic_activation_float8_weight()
+            elif 'fp8dqrow' in quantization:
+                from torchao.quantization.quant_api import PerRow
+                quant_func = float8_dynamic_activation_float8_weight(granularity=PerRow())
+            elif 'int8dq' in quantization:
+                quant_func = int8_dynamic_activation_int8_weight()
+        
+            for i, block in enumerate(pipe.transformer.transformer_blocks):
+                if "CogVideoXBlock" in str(block):
+                    quantize_(block, quant_func, filter_fn=filter_fn)
+                        
+            manual_offloading = False # to disable manual .to(device) calls
+        
+        if enable_sequential_cpu_offload:
+            pipe.enable_sequential_cpu_offload()
+            manual_offloading = False
+
+        # CogVideoXBlock(
+        #     (norm1): CogVideoXLayerNormZero(
+        #         (silu): SiLU()
+        #         (linear): Linear(in_features=512, out_features=18432, bias=True)
+        #         (norm): LayerNorm((3072,), eps=1e-05, elementwise_affine=True)
+        #     )
+        #     (attn1): Attention(
+        #         (norm_q): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+        #         (norm_k): LayerNorm((64,), eps=1e-06, elementwise_affine=True)
+        #         (to_q): Linear(in_features=3072, out_features=3072, bias=True)
+        #         (to_k): Linear(in_features=3072, out_features=3072, bias=True)
+        #         (to_v): Linear(in_features=3072, out_features=3072, bias=True)
+        #         (to_out): ModuleList(
+        #         (0): Linear(in_features=3072, out_features=3072, bias=True)
+        #         (1): Dropout(p=0.0, inplace=False)
+        #         )
+        #     )
+        #     (norm2): CogVideoXLayerNormZero(
+        #         (silu): SiLU()
+        #         (linear): Linear(in_features=512, out_features=18432, bias=True)
+        #         (norm): LayerNorm((3072,), eps=1e-05, elementwise_affine=True)
+        #     )
+        #     (ff): FeedForward(
+        #         (net): ModuleList(
+        #         (0): GELU(
+        #             (proj): Linear(in_features=3072, out_features=12288, bias=True)
+        #         )
+        #         (1): Dropout(p=0.0, inplace=False)
+        #         (2): Linear(in_features=12288, out_features=3072, bias=True)
+        #         (3): Dropout(p=0.0, inplace=False)
+        #         )
+        #     )
+        #     )               
+       
+        # if compile == "onediff":
+        #     from onediffx import compile_pipe
+        #     os.environ['NEXFORT_FX_FORCE_TRITON_SDPA'] = '1'
+            
+        #     pipe = compile_pipe(
+        #     pipe,
+        #     backend="nexfort",
+        #     options= {"mode": "max-optimize:max-autotune:max-autotune", "memory_format": "channels_last", "options": {"inductor.optimize_linear_epilogue": False, "triton.fuse_attention_allow_fp16_reduction": False}},
+        #     ignores=["vae"],
+        #     fuse_qkv_projections= False,
+        #     )          
+        
         pipeline = {
             "pipe": pipe,
             "dtype": dtype,
             "base_path": base_path,
             "onediff": True if compile == "onediff" else False,
             "cpu_offloading": enable_sequential_cpu_offload,
+            "manual_offloading": manual_offloading,
             "scheduler_config": scheduler_config,
-            "model_name": model
+            "model_name": model,
         }
 
-        return (pipeline,)
-
+        return (pipeline, vae)
+#region GGUF
 class DownloadAndLoadCogVideoGGUFModel:
     @classmethod
     def INPUT_TYPES(s):
@@ -295,12 +439,12 @@ class DownloadAndLoadCogVideoGGUFModel:
                     [
                         "CogVideoX_5b_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_I2V_GGUF_Q4_0.safetensors",
+                        "CogVideoX_5b_1_5_I2V_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_1_1_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_fun_1_1_Pose_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_Interpolation_GGUF_Q4_0.safetensors",
                         "CogVideoX_5b_Tora_GGUF_Q4_0.safetensors",
-
                     ],
                 ),
             "vae_precision": (["fp16", "fp32", "bf16"], {"default": "bf16", "tooltip": "VAE dtype"}),
@@ -309,20 +453,20 @@ class DownloadAndLoadCogVideoGGUFModel:
             "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
             },
             "optional": {
-                "pab_config": ("PAB_CONFIG", {"default": None}),
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
+                #"lora": ("COGLORA", {"default": None}),
                 "compile": (["disabled","torch"], {"tooltip": "compile the model for faster inference, these are advanced options only available on Linux, see readme for more info"}),
+                "attention_mode": (["sdpa", "sageattn"], {"default": "sdpa"}),
             }
         }
 
-    RETURN_TYPES = ("COGVIDEOPIPE",)
-    RETURN_NAMES = ("cogvideo_pipe", )
+    RETURN_TYPES = ("COGVIDEOMODEL", "VAE",)
+    RETURN_NAMES = ("model", "vae",)
     FUNCTION = "loadmodel"
     CATEGORY = "CogVideoWrapper"
 
-    def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload, pab_config=None, block_edit=None, compile="disabled"):
-
-        check_diffusers_version()
+    def loadmodel(self, model, vae_precision, fp8_fastmode, load_device, enable_sequential_cpu_offload, 
+                  block_edit=None, compile="disabled", attention_mode="sdpa"):
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
@@ -358,7 +502,6 @@ class DownloadAndLoadCogVideoGGUFModel:
         with open(transformer_path) as f:
             transformer_config = json.load(f)
 
-        sd = load_torch_file(gguf_path)
 
         from . import mz_gguf_loader
         import importlib
@@ -370,45 +513,45 @@ class DownloadAndLoadCogVideoGGUFModel:
                     transformer_config["in_channels"] = 32
                 else:
                     transformer_config["in_channels"] = 33
-                if pab_config is not None:
-                    transformer = CogVideoXTransformer3DModelFunPAB.from_config(transformer_config)
-                else:
-                    transformer = CogVideoXTransformer3DModelFun.from_config(transformer_config)
             elif "I2V" in model or "Interpolation" in model:
                 transformer_config["in_channels"] = 32
-                if pab_config is not None:
-                    transformer = CogVideoXTransformer3DModelPAB.from_config(transformer_config)
-                else:
-                    transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
+                if "1_5" in model:
+                    transformer_config["ofs_embed_dim"] = 512
+                    transformer_config["use_learned_positional_embeddings"] = False
+                    transformer_config["patch_size_t"] = 2
+                    transformer_config["patch_bias"] = False
+                    transformer_config["sample_height"] = 300
+                    transformer_config["sample_width"] = 300
             else:
                 transformer_config["in_channels"] = 16
-                if pab_config is not None:
-                    transformer = CogVideoXTransformer3DModelPAB.from_config(transformer_config)
-                else:
-                    transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
 
+            transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
+
+            params_to_keep = {"patch_embed", "pos_embedding", "time_embedding"}
             if "2b" in model:
-                for name, param in transformer.named_parameters():
-                    if name != "pos_embedding":
-                        param.data = param.data.to(torch.float8_e4m3fn)
-                    else:
-                        param.data = param.data.to(torch.float16)
-            else:
-                transformer.to(torch.float8_e4m3fn)
-
+                cast_dtype = torch.float16
+            elif "1_5" in model:
+                params_to_keep = {"norm1.linear.weight", "patch_embed", "time_embedding", "ofs_embedding", "norm_final", "norm_out", "proj_out"}
+                cast_dtype = torch.bfloat16
+            for name, param in transformer.named_parameters():
+                if not any(keyword in name for keyword in params_to_keep):
+                    param.data = param.data.to(torch.float8_e4m3fn)
+                else:
+                    param.data = param.data.to(cast_dtype)
+            #for name, param in transformer.named_parameters():
+             #       print(name, param.data.dtype)
+           
             if block_edit is not None:
                 transformer = remove_specific_blocks(transformer, block_edit)
 
-            transformer = mz_gguf_loader.quantize_load_state_dict(transformer, sd, device="cpu")
-            if load_device == "offload_device":
-                transformer.to(offload_device)
-            else:
-                transformer.to(device)
-        
+        transformer.attention_mode = attention_mode
         
         if fp8_fastmode:
+           params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding"}
+           if "1.5" in model:
+                params_to_keep.update({"ff","norm1.linear.weight", "norm_k", "norm_q","ofs_embedding", "norm_final", "norm_out", "proj_out"})   
            from .fp8_optimization import convert_fp8_linear
-           convert_fp8_linear(transformer, vae_dtype)
+           convert_fp8_linear(transformer, vae_dtype, params_to_keep=params_to_keep)
 
         if compile == "torch":
             # compilation
@@ -435,21 +578,24 @@ class DownloadAndLoadCogVideoGGUFModel:
         with open(os.path.join(script_directory, 'configs', 'vae_config.json')) as f:
             vae_config = json.load(f)
         
+        #VAE
         vae_sd = load_torch_file(vae_path)
-        if "fun" in model:
-            vae = AutoencoderKLCogVideoXFun.from_config(vae_config).to(vae_dtype).to(offload_device)
-            vae.load_state_dict(vae_sd)
-            if "Pose" in model:
-                pipe = CogVideoX_Fun_Pipeline_Control(vae, transformer, scheduler, pab_config=pab_config)
-            else:
-                pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler, pab_config=pab_config)
-        else:
-            vae = AutoencoderKLCogVideoX.from_config(vae_config).to(vae_dtype).to(offload_device)
-            vae.load_state_dict(vae_sd)
-            pipe = CogVideoXPipeline(vae, transformer, scheduler, pab_config=pab_config)
+        vae = AutoencoderKLCogVideoX.from_config(vae_config).to(vae_dtype).to(offload_device)
+        vae.load_state_dict(vae_sd)
+        del vae_sd
+        pipe = CogVideoXPipeline(transformer, scheduler, dtype=vae_dtype)
 
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
+
+        sd = load_torch_file(gguf_path)
+        pipe.transformer = mz_gguf_loader.quantize_load_state_dict(pipe.transformer, sd, device="cpu")
+        del sd
+
+        if load_device == "offload_device":
+            pipe.transformer.to(offload_device)
+        else:
+            pipe.transformer.to(device)
 
         pipeline = {
             "pipe": pipe,
@@ -458,11 +604,289 @@ class DownloadAndLoadCogVideoGGUFModel:
             "onediff": False,
             "cpu_offloading": enable_sequential_cpu_offload,
             "scheduler_config": scheduler_config,
-            "model_name": model
+            "model_name": model,
+            "manual_offloading": True,
+        }
+
+        return (pipeline, vae)
+
+#region ModelLoader
+class CogVideoXModelLoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": (folder_paths.get_filename_list("diffusion_models"), {"tooltip": "The name of the checkpoint (model) to load.",}),
+            
+            "base_precision": (["fp16", "fp32", "bf16"], {"default": "bf16"}),
+            "quantization": (['disabled', 'fp8_e4m3fn', 'fp8_e4m3fn_fast', 'torchao_fp8dq', "torchao_fp8dqrow", "torchao_int8dq", "torchao_fp6"], {"default": 'disabled', "tooltip": "optional quantization method"}),
+            "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
+            "enable_sequential_cpu_offload": ("BOOLEAN", {"default": False, "tooltip": "significantly reducing memory usage and slows down the inference"}),
+            },
+            "optional": {
+                "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
+                "lora": ("COGLORA", {"default": None}),
+                "compile_args":("COMPILEARGS", ),
+                "attention_mode": (["sdpa", "sageattn", "fused_sdpa", "fused_sageattn"], {"default": "sdpa"}),
+            }
+        }
+
+    RETURN_TYPES = ("COGVIDEOMODEL",)
+    RETURN_NAMES = ("model", )
+    FUNCTION = "loadmodel"
+    CATEGORY = "CogVideoWrapper"
+
+    def loadmodel(self, model, base_precision, load_device, enable_sequential_cpu_offload, 
+                  block_edit=None, compile_args=None, lora=None, attention_mode="sdpa", quantization="disabled"):
+
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+        manual_offloading = True
+        transformer_load_device = device if load_device == "main_device" else offload_device
+        mm.soft_empty_cache()
+
+        base_dtype = {"fp8_e4m3fn": torch.float8_e4m3fn, "fp8_e4m3fn_fast": torch.float8_e4m3fn, "bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[base_precision]
+
+        model_path = folder_paths.get_full_path_or_raise("diffusion_models", model)
+        sd = load_torch_file(model_path, device=transformer_load_device)
+
+        model_type = ""
+        if sd["patch_embed.proj.weight"].shape == (3072, 33, 2, 2):
+            model_type = "fun_5b"
+        elif sd["patch_embed.proj.weight"].shape == (3072, 16, 2, 2):
+            model_type = "5b"
+        elif sd["patch_embed.proj.weight"].shape == (3072, 128):
+            model_type = "5b_1_5"
+        elif sd["patch_embed.proj.weight"].shape == (3072, 256):
+            model_type = "5b_I2V_1_5"
+        elif sd["patch_embed.proj.weight"].shape == (1920, 33, 2, 2):
+            model_type = "fun_2b"
+        elif sd["patch_embed.proj.weight"].shape == (1920, 16, 2, 2):
+            model_type = "2b"
+        elif sd["patch_embed.proj.weight"].shape == (3072, 32, 2, 2):
+            if "pos_embedding" in sd:
+                model_type = "fun_5b_pose"
+            else:
+                model_type = "I2V_5b"
+        else:
+            raise Exception("Selected model is not recognized")
+        log.info(f"Detected CogVideoX model type: {model_type}")
+
+        if "5b" in model_type:
+            scheduler_config_path = os.path.join(script_directory, 'configs', 'scheduler_config_5b.json')
+            transformer_config_path = os.path.join(script_directory, 'configs', 'transformer_config_5b.json')
+        elif "2b" in model_type:
+            scheduler_config_path = os.path.join(script_directory, 'configs', 'scheduler_config_2b.json')
+            transformer_config_path = os.path.join(script_directory, 'configs', 'transformer_config_2b.json')
+    
+        with open(transformer_config_path) as f:
+            transformer_config = json.load(f)
+
+            if model_type in ["I2V", "I2V_5b", "fun_5b_pose", "5b_I2V_1_5"]:
+                transformer_config["in_channels"] = 32
+                if "1_5" in model_type:
+                    transformer_config["ofs_embed_dim"] = 512
+            elif "fun" in model_type:
+                transformer_config["in_channels"] = 33
+            else:
+                transformer_config["in_channels"] = 16
+            if "1_5" in model_type:
+                    transformer_config["use_learned_positional_embeddings"] = False
+                    transformer_config["patch_size_t"] = 2
+                    transformer_config["patch_bias"] = False
+                    transformer_config["sample_height"] = 300
+                    transformer_config["sample_width"] = 300
+
+        with init_empty_weights():
+            transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
+
+        #load weights
+        #params_to_keep = {}
+        log.info("Using accelerate to load and assign model weights to device...")
+        
+        for name, param in transformer.named_parameters():
+            #dtype_to_use = base_dtype if any(keyword in name for keyword in params_to_keep) else dtype
+            set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=base_dtype, value=sd[name])
+        del sd
+
+
+        #scheduler
+        with open(scheduler_config_path) as f:
+            scheduler_config = json.load(f)
+        scheduler = CogVideoXDDIMScheduler.from_config(scheduler_config, subfolder="scheduler")
+
+        if block_edit is not None:
+            transformer = remove_specific_blocks(transformer, block_edit)
+
+        if "fused" in attention_mode:
+            from diffusers.models.attention import Attention
+            transformer.fuse_qkv_projections = True
+            for module in transformer.modules():
+                if isinstance(module, Attention):
+                    module.fuse_projections(fuse=True)
+        transformer.attention_mode = attention_mode
+
+        if "fun" in model_type:
+            if not "pose" in model_type:
+                raise NotImplementedError("Fun models besides pose are not supported with this loader yet")
+                pipe = CogVideoX_Fun_Pipeline_Inpaint(vae, transformer, scheduler)
+            else:
+                pipe = CogVideoXPipeline(transformer, scheduler, dtype=base_dtype)
+        else:
+            pipe = CogVideoXPipeline(transformer, scheduler, dtype=base_dtype)
+
+        if enable_sequential_cpu_offload:
+            pipe.enable_sequential_cpu_offload()
+
+        #LoRAs
+        if lora is not None:
+            from .lora_utils import merge_lora#, load_lora_into_transformer
+            if "fun" in model.lower():
+                for l in lora:
+                    log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
+                    transformer = merge_lora(transformer, l["path"], l["strength"])
+            else:
+                adapter_list = []
+                adapter_weights = []
+                for l in lora:
+                    fuse = True if l["fuse_lora"] else False
+                    lora_sd = load_torch_file(l["path"])             
+                    for key, val in lora_sd.items():
+                        if "lora_B" in key:
+                            lora_rank = val.shape[1]
+                            break
+                    log.info(f"Merging rank {lora_rank} LoRA weights from {l['path']} with strength {l['strength']}")
+                    adapter_name = l['path'].split("/")[-1].split(".")[0]
+                    adapter_weight = l['strength']
+                    pipe.load_lora_weights(l['path'], weight_name=l['path'].split("/")[-1], lora_rank=lora_rank, adapter_name=adapter_name)
+                    
+                    #transformer = load_lora_into_transformer(lora, transformer)
+                    adapter_list.append(adapter_name)
+                    adapter_weights.append(adapter_weight)
+                for l in lora:
+                    pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
+                if fuse:
+                    lora_scale = 1
+                    dimension_loras = ["orbit", "dimensionx"] # for now dimensionx loras need scaling
+                    if any(item in lora[-1]["path"].lower() for item in dimension_loras):
+                        lora_scale = lora_scale / lora_rank
+                    pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
+
+        if compile_args is not None:
+            pipe.transformer.to(memory_format=torch.channels_last)
+
+        #quantization
+        if quantization == "fp8_e4m3fn" or quantization == "fp8_e4m3fn_fast":
+            params_to_keep = {"patch_embed", "lora", "pos_embedding", "time_embedding", "norm_k", "norm_q", "to_k.bias", "to_q.bias", "to_v.bias"}
+            if "1.5" in model:
+                    params_to_keep.update({"norm1.linear.weight", "ofs_embedding", "norm_final", "norm_out", "proj_out"}) 
+            for name, param in pipe.transformer.named_parameters():
+                if not any(keyword in name for keyword in params_to_keep):
+                    param.data = param.data.to(torch.float8_e4m3fn)
+        
+            if quantization == "fp8_e4m3fn_fast":
+                from .fp8_optimization import convert_fp8_linear
+                if "1.5" in model:
+                    params_to_keep.update({"ff"}) #otherwise NaNs
+                convert_fp8_linear(pipe.transformer, base_dtype, params_to_keep=params_to_keep)
+        
+        #compile
+        if compile_args is not None:
+            torch._dynamo.config.cache_size_limit = compile_args["dynamo_cache_size_limit"]
+            for i, block in enumerate(pipe.transformer.transformer_blocks):
+                if "CogVideoXBlock" in str(block):
+                    pipe.transformer.transformer_blocks[i] = torch.compile(block, fullgraph=compile_args["fullgraph"], dynamic=compile_args["dynamic"], backend=compile_args["backend"], mode=compile_args["mode"])
+
+        if "torchao" in quantization:
+            try:
+                from torchao.quantization import (
+                quantize_,
+                fpx_weight_only,
+                float8_dynamic_activation_float8_weight,
+                int8_dynamic_activation_int8_weight
+            )
+            except:
+                raise ImportError("torchao is not installed, please install torchao to use fp8dq")
+
+            def filter_fn(module: nn.Module, fqn: str) -> bool:
+                target_submodules = {'attn1', 'ff'} # avoid norm layers, 1.5 at least won't work with quantized norm1 #todo: test other models
+                if any(sub in fqn for sub in target_submodules):
+                    return isinstance(module, nn.Linear)
+                return False
+            
+            if "fp6" in quantization: #slower for some reason on 4090
+                quant_func = fpx_weight_only(3, 2)
+            elif "fp8dq" in quantization: #very fast on 4090 when compiled
+                quant_func = float8_dynamic_activation_float8_weight()
+            elif 'fp8dqrow' in quantization:
+                from torchao.quantization.quant_api import PerRow
+                quant_func = float8_dynamic_activation_float8_weight(granularity=PerRow())
+            elif 'int8dq' in quantization:
+                quant_func = int8_dynamic_activation_int8_weight()
+        
+            for i, block in enumerate(pipe.transformer.transformer_blocks):
+                if "CogVideoXBlock" in str(block):
+                    quantize_(block, quant_func, filter_fn=filter_fn)
+            
+            manual_offloading = False # to disable manual .to(device) calls
+            log.info(f"Quantized transformer blocks to {quantization}")
+        
+        # if load_device == "offload_device":
+        #     pipe.transformer.to(offload_device)
+        # else:
+        #     pipe.transformer.to(device)
+
+        pipeline = {
+            "pipe": pipe,
+            "dtype": base_dtype,
+            "base_path": model,
+            "onediff": False,
+            "cpu_offloading": enable_sequential_cpu_offload,
+            "scheduler_config": scheduler_config,
+            "model_name": model,
+            "manual_offloading": manual_offloading,
         }
 
         return (pipeline,)
+    
+#region VAE
 
+class CogVideoXVAELoader:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model_name": (folder_paths.get_filename_list("vae"), {"tooltip": "The name of the checkpoint (vae) to load."}),
+            },
+            "optional": {
+                "precision": (["fp16", "fp32", "bf16"],
+                    {"default": "bf16"}
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("VAE",)
+    RETURN_NAMES = ("vae", )
+    FUNCTION = "loadmodel"
+    CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "Loads CogVideoX VAE model from 'ComfyUI/models/vae'"
+
+    def loadmodel(self, model_name, precision):
+        device = mm.get_torch_device()
+        offload_device = mm.unet_offload_device()
+
+        dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
+        with open(os.path.join(script_directory, 'configs', 'vae_config.json')) as f:
+            vae_config = json.load(f)
+        model_path = folder_paths.get_full_path("vae", model_name)
+        vae_sd = load_torch_file(model_path)
+
+        vae = AutoencoderKLCogVideoX.from_config(vae_config).to(dtype).to(offload_device)
+        vae.load_state_dict(vae_sd)
+
+        return (vae,)
+    
+#region Tora
 class DownloadAndLoadToraModel:
     @classmethod
     def INPUT_TYPES(s):
@@ -483,9 +907,6 @@ class DownloadAndLoadToraModel:
     DESCRIPTION = "Downloads and loads the the Tora model from Huggingface to 'ComfyUI/models/CogVideo/CogVideoX-5b-Tora'"
 
     def loadmodel(self, model):
-        
-        check_diffusers_version()
-
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         mm.soft_empty_cache()
@@ -570,7 +991,7 @@ class DownloadAndLoadToraModel:
         }
 
         return (toramodel,)
-
+#region controlnet
 class DownloadAndLoadCogVideoControlNet:
     @classmethod
     def INPUT_TYPES(s):
@@ -625,6 +1046,8 @@ NODE_CLASS_MAPPINGS = {
     "DownloadAndLoadCogVideoControlNet": DownloadAndLoadCogVideoControlNet,
     "DownloadAndLoadToraModel": DownloadAndLoadToraModel,
     "CogVideoLoraSelect": CogVideoLoraSelect,
+    "CogVideoXVAELoader": CogVideoXVAELoader,
+    "CogVideoXModelLoader": CogVideoXModelLoader,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -632,4 +1055,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoControlNet": "(Down)load CogVideo ControlNet",
     "DownloadAndLoadToraModel": "(Down)load Tora Model",
     "CogVideoLoraSelect": "CogVideo LoraSelect",
+    "CogVideoXVAELoader": "CogVideoX VAE Loader",
+    "CogVideoXModelLoader": "CogVideoX Model Loader",
     }
