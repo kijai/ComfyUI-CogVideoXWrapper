@@ -514,8 +514,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         # 7. context schedule
         if context_schedule is not None:
-            if image_cond_latents is not None:
-                raise NotImplementedError("Context schedule not currently supported with image conditioning")
+            # if image_cond_latents is not None:
+            #     raise NotImplementedError("Context schedule not currently supported with image conditioning")
             logger.info(f"Context schedule enabled: {context_frames} frames, {context_stride} stride, {context_overlap} overlap")
             use_context_schedule = True
             from .context import get_context_scheduler
