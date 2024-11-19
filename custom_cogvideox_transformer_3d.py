@@ -610,29 +610,29 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         if self.fastercache_counter >= self.fastercache_start_step + 3 and self.fastercache_counter % 5 !=0:
             # 3. Transformer blocks
             for i, block in enumerate(self.transformer_blocks):
-                    hidden_states, encoder_hidden_states = block(
-                        hidden_states=hidden_states[:1],
-                        encoder_hidden_states=encoder_hidden_states[:1],
-                        temb=emb[:1],
-                        image_rotary_emb=image_rotary_emb,
-                        video_flow_feature=video_flow_features[i][:1] if video_flow_features is not None else None,
-                        fuser = self.fuser_list[i] if self.fuser_list is not None else None,
-                        block_use_fastercache = i <= self.fastercache_num_blocks_to_cache,
-                        fastercache_counter = self.fastercache_counter,
-                        fastercache_start_step = self.fastercache_start_step,
-                        fastercache_device = self.fastercache_device,
-                        attention_mode = self.attention_mode
-                    )
+                hidden_states, encoder_hidden_states = block(
+                    hidden_states=hidden_states[:1],
+                    encoder_hidden_states=encoder_hidden_states[:1],
+                    temb=emb[:1],
+                    image_rotary_emb=image_rotary_emb,
+                    video_flow_feature=video_flow_features[i][:1] if video_flow_features is not None else None,
+                    fuser = self.fuser_list[i] if self.fuser_list is not None else None,
+                    block_use_fastercache = i <= self.fastercache_num_blocks_to_cache,
+                    fastercache_counter = self.fastercache_counter,
+                    fastercache_start_step = self.fastercache_start_step,
+                    fastercache_device = self.fastercache_device,
+                    attention_mode = self.attention_mode
+                )
 
-                    if (controlnet_states is not None) and (i < len(controlnet_states)):
-                        controlnet_states_block = controlnet_states[i]
-                        controlnet_block_weight = 1.0
-                        if isinstance(controlnet_weights, (list, np.ndarray)) or torch.is_tensor(controlnet_weights):
-                            controlnet_block_weight = controlnet_weights[i]
-                        elif isinstance(controlnet_weights, (float, int)):
-                            controlnet_block_weight = controlnet_weights
-                        
-                        hidden_states = hidden_states + controlnet_states_block * controlnet_block_weight
+                if (controlnet_states is not None) and (i < len(controlnet_states)):
+                    controlnet_states_block = controlnet_states[i]
+                    controlnet_block_weight = 1.0
+                    if isinstance(controlnet_weights, (list, np.ndarray)) or torch.is_tensor(controlnet_weights):
+                        controlnet_block_weight = controlnet_weights[i]
+                    elif isinstance(controlnet_weights, (float, int)):
+                        controlnet_block_weight = controlnet_weights
+                    
+                    hidden_states = hidden_states + controlnet_states_block * controlnet_block_weight
                     
             if not self.config.use_rotary_positional_embeddings:
                 # CogVideoX-2B
@@ -698,15 +698,16 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 #if has_nan:
                 #    raise ValueError(f"block output hidden_states has nan: {has_nan}")
 
-            if (controlnet_states is not None) and (i < len(controlnet_states)):
-                controlnet_states_block = controlnet_states[i]
-                controlnet_block_weight = 1.0
-                if isinstance(controlnet_weights, (list, np.ndarray)) or torch.is_tensor(controlnet_weights):
-                    controlnet_block_weight = controlnet_weights[i]
-                elif isinstance(controlnet_weights, (float, int)):
-                    controlnet_block_weight = controlnet_weights
-                
-                hidden_states = hidden_states + controlnet_states_block * controlnet_block_weight
+                #controlnet
+                if (controlnet_states is not None) and (i < len(controlnet_states)):
+                    controlnet_states_block = controlnet_states[i]
+                    controlnet_block_weight = 1.0
+                    if isinstance(controlnet_weights, (list, np.ndarray)) or torch.is_tensor(controlnet_weights):
+                        controlnet_block_weight = controlnet_weights[i]
+                        print(controlnet_block_weight)
+                    elif isinstance(controlnet_weights, (float, int)):
+                        controlnet_block_weight = controlnet_weights                    
+                    hidden_states = hidden_states + controlnet_states_block * controlnet_block_weight
                     
             if not self.config.use_rotary_positional_embeddings:
                 # CogVideoX-2B

@@ -595,14 +595,14 @@ class CogVideoSampler:
     FUNCTION = "process"
     CATEGORY = "CogVideoWrapper"
 
-    def process(self, pipeline, positive, negative, steps, cfg, seed, scheduler, num_frames, samples=None,
+    def process(self, model, positive, negative, steps, cfg, seed, scheduler, num_frames, samples=None,
                 denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None):
         mm.soft_empty_cache()
 
-        model_name = pipeline.get("model_name", "")
+        model_name = model.get("model_name", "")
         supports_image_conds = True if "I2V" in model_name or "interpolation" in model_name.lower() or "fun" in model_name.lower() else False
 
-        if "fun" in model_name.lower() and image_cond_latents is not None:
+        if "fun" in model_name.lower() and "pose" not in model_name.lower() and image_cond_latents is not None:
             assert image_cond_latents["mask"] is not None, "For fun inpaint models use CogVideoImageEncodeFunInP"
             fun_mask = image_cond_latents["mask"]
         else:
@@ -632,11 +632,11 @@ class CogVideoSampler:
 
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
-        pipe = pipeline["pipe"]
-        dtype = pipeline["dtype"]
-        scheduler_config = pipeline["scheduler_config"]
+        pipe = model["pipe"]
+        dtype = model["dtype"]
+        scheduler_config = model["scheduler_config"]
         
-        if not pipeline["cpu_offloading"] and pipeline["manual_offloading"]:
+        if not model["cpu_offloading"] and model["manual_offloading"]:
             pipe.transformer.to(device)
         generator = torch.Generator(device=torch.device("cpu")).manual_seed(seed)
 
@@ -683,10 +683,10 @@ class CogVideoSampler:
         except:
             pass
   
-        autocastcondition = not pipeline["onediff"] or not dtype == torch.float32
+        autocastcondition = not model["onediff"] or not dtype == torch.float32
         autocast_context = torch.autocast(mm.get_autocast_device(device), dtype=dtype) if autocastcondition else nullcontext()
         with autocast_context:
-            latents = pipeline["pipe"](
+            latents = model["pipe"](
                 num_inference_steps=steps,
                 height = height,
                 width = width,
@@ -708,7 +708,7 @@ class CogVideoSampler:
                 controlnet=controlnet,
                 tora=tora_trajectory if tora_trajectory is not None else None,
             )
-        if not pipeline["cpu_offloading"] and pipeline["manual_offloading"]:
+        if not model["cpu_offloading"] and model["manual_offloading"]:
             pipe.transformer.to(offload_device)
 
         if fastercache is not None:
@@ -763,18 +763,16 @@ class CogVideoDecode:
     @classmethod
     def INPUT_TYPES(s):
         return {"required": {
-            "samples": ("LATENT", ),
-            "vae": ("VAE", {"default": None}),
-            "enable_vae_tiling": ("BOOLEAN", {"default": True, "tooltip": "Drastically reduces memory use but may introduce seams"}),
-            },
-            "optional": {
-            "tile_sample_min_height": ("INT", {"default": 240, "min": 16, "max": 2048, "step": 8, "tooltip": "Minimum tile height, default is half the height"}),
-            "tile_sample_min_width": ("INT", {"default": 360, "min": 16, "max": 2048, "step": 8, "tooltip": "Minimum tile width, default is half the width"}),
-            "tile_overlap_factor_height": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.001}),
-            "tile_overlap_factor_width": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.001}),
-            "auto_tile_size": ("BOOLEAN", {"default": True, "tooltip": "Auto size based on height and width, default is half the size"}),
-            }
-        }
+                    "vae": ("VAE",),
+                    "samples": ("LATENT",),
+                    "enable_vae_tiling": ("BOOLEAN", {"default": True, "tooltip": "Drastically reduces memory use but may introduce seams"}),
+                    "tile_sample_min_height": ("INT", {"default": 240, "min": 16, "max": 2048, "step": 8, "tooltip": "Minimum tile height, default is half the height"}),
+                    "tile_sample_min_width": ("INT", {"default": 360, "min": 16, "max": 2048, "step": 8, "tooltip": "Minimum tile width, default is half the width"}),
+                    "tile_overlap_factor_height": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.001}),
+                    "tile_overlap_factor_width": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.001}),
+                    "auto_tile_size": ("BOOLEAN", {"default": True, "tooltip": "Auto size based on height and width, default is half the size"}),
+                    },            
+                }
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("images",)
