@@ -1,5 +1,32 @@
 # WORK IN PROGRESS
 
+## BREAKING Update8
+
+This is big one, and unfortunately to do the necessary cleanup and refactoring this will break every old workflow as they are.
+I apologize for the inconvenience, if I don't do this now I'll keep making it worse until maintaining becomes too much of a chore, so from my pov there was no choice.
+
+*Please either use the new workflows or fix the nodes in your old ones before posting issue reports!*
+
+Old version will be kept in a legacy branch, but not maintained
+
+- Support CogVideoX 1.5 models
+- Major code cleanup (it was bad, still isn't great, wip)
+- Merge Fun -model functionality into main pipeline:
+    - All Fun specific nodes, besides image encode node for Fun -InP models are gone
+    - Main CogVideo Sampler works with Fun models
+    - DimensionX LoRAs now work with Fun models as well
+
+- Remove width/height from the sampler widgets and detect from input instead, this meanst text2vid now requires using empty latents
+- Separate VAE from the model, allow using fp32 VAE
+- Add ability to load some of the non-GGUF models as single files (only few available for now: https://huggingface.co/Kijai/CogVideoX-comfy)
+- Add some torchao quantizations as options
+- Add interpolation as option for the main encode node, old interpolation specific node is gone
+- torch.compile optimizations
+- Remove PAB in favor of FasterCache and cleaner code
+- other smaller things I forgot about at this point
+
+For Fun -model based workflows it's more drastic change, for others migrating generally means re-setting many of the nodes.
+
 ## Update7
 
 - Refactored the Fun version's sampler to accept any resolution, this should make it lot simpler to use with Tora. **BREAKS OLD WORKFLOWS**, old FunSampler nodes need to be remade.

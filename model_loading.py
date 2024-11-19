@@ -240,37 +240,37 @@ class DownloadAndLoadCogVideoModel:
         
         #LoRAs
         if lora is not None:
-            # from .lora_utils import merge_lora#, load_lora_into_transformer
-            # if "fun" in model.lower():
-            #     for l in lora:
-            #         log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
-            #         transformer = merge_lora(transformer, l["path"], l["strength"])
-            #else:
-            adapter_list = []
-            adapter_weights = []
-            for l in lora:
-                fuse = True if l["fuse_lora"] else False
-                lora_sd = load_torch_file(l["path"])             
-                for key, val in lora_sd.items():
-                    if "lora_B" in key:
-                        lora_rank = val.shape[1]
-                        break
-                log.info(f"Merging rank {lora_rank} LoRA weights from {l['path']} with strength {l['strength']}")
-                adapter_name = l['path'].split("/")[-1].split(".")[0]
-                adapter_weight = l['strength']
-                pipe.load_lora_weights(l['path'], weight_name=l['path'].split("/")[-1], lora_rank=lora_rank, adapter_name=adapter_name)
-                
-                #transformer = load_lora_into_transformer(lora, transformer)
-                adapter_list.append(adapter_name)
-                adapter_weights.append(adapter_weight)
-            for l in lora:
-                pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
-            if fuse:
-                lora_scale = 1
-                dimension_loras = ["orbit", "dimensionx"] # for now dimensionx loras need scaling
-                if any(item in lora[-1]["path"].lower() for item in dimension_loras):
-                    lora_scale = lora_scale / lora_rank
-                pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
+            try:
+                adapter_list = []
+                adapter_weights = []
+                for l in lora:
+                    fuse = True if l["fuse_lora"] else False
+                    lora_sd = load_torch_file(l["path"])             
+                    for key, val in lora_sd.items():
+                        if "lora_B" in key:
+                            lora_rank = val.shape[1]
+                            break
+                    log.info(f"Merging rank {lora_rank} LoRA weights from {l['path']} with strength {l['strength']}")
+                    adapter_name = l['path'].split("/")[-1].split(".")[0]
+                    adapter_weight = l['strength']
+                    pipe.load_lora_weights(l['path'], weight_name=l['path'].split("/")[-1], lora_rank=lora_rank, adapter_name=adapter_name)
+                    
+                    #transformer = load_lora_into_transformer(lora, transformer)
+                    adapter_list.append(adapter_name)
+                    adapter_weights.append(adapter_weight)
+                for l in lora:
+                    pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
+                if fuse:
+                    lora_scale = 1
+                    dimension_loras = ["orbit", "dimensionx"] # for now dimensionx loras need scaling
+                    if any(item in lora[-1]["path"].lower() for item in dimension_loras):
+                        lora_scale = lora_scale / lora_rank
+                    pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
+            except: #Fun trainer LoRAs are loaded differently
+                from .lora_utils import merge_lora
+                for l in lora:
+                    log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
+                    transformer = merge_lora(transformer, l["path"], l["strength"])
 
         if "fused" in attention_mode:
             from diffusers.models.attention import Attention
