@@ -84,7 +84,7 @@
       },
       "widgets_values": [
         49,
-        50,
+        25,
         6,
         458091243358272,
         "randomize",
@@ -268,7 +268,7 @@
       },
       "widgets_values": [
         49,
-        false,
+        true,
         0
       ]
     },
