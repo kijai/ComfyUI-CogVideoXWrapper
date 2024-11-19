@@ -220,6 +220,7 @@ class CogVideoImageEncode:
                 "end_image": ("IMAGE", ),
                 "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
                 "noise_aug_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001, "tooltip": "Augment image with noise"}),
+                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
             },
         }
 
@@ -228,7 +229,7 @@ class CogVideoImageEncode:
     FUNCTION = "encode"
     CATEGORY = "CogVideoWrapper"
 
-    def encode(self, vae, start_image, end_image=None, enable_tiling=False, noise_aug_strength=0.0):
+    def encode(self, vae, start_image, end_image=None, enable_tiling=False, noise_aug_strength=0.0, strength=1.0):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         generator = torch.Generator(device=device).manual_seed(0)
@@ -271,7 +272,7 @@ class CogVideoImageEncode:
         else:
             final_latents = start_latents
 
-        final_latents = final_latents * vae_scaling_factor
+        final_latents = final_latents * vae_scaling_factor * strength
         
         log.info(f"Encoded latents shape: {final_latents.shape}")
         vae.to(offload_device)
