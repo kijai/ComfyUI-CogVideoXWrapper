@@ -14,7 +14,7 @@
         "1": 574
       },
       "flags": {},
-      "order": 8,
+      "order": 7,
       "mode": 0,
       "inputs": [
         {
@@ -103,7 +103,7 @@
         "1": 122
       },
       "flags": {},
-      "order": 6,
+      "order": 5,
       "mode": 0,
       "inputs": [
         {
@@ -152,7 +152,7 @@
         "1": 168.08047485351562
       },
       "flags": {},
-      "order": 5,
+      "order": 4,
       "mode": 0,
       "inputs": [
         {
@@ -275,7 +275,7 @@
         "1": 198
       },
       "flags": {},
-      "order": 9,
+      "order": 8,
       "mode": 0,
       "inputs": [
         {
@@ -311,80 +311,6 @@
       ]
     },
     {
-      "id": 44,
-      "type": "VHS_VideoCombine",
-      "pos": {
-        "0": 1884,
-        "1": -6
-      },
-      "size": [
-        605.3909912109375,
-        654.5737362132353
-      ],
-      "flags": {},
-      "order": 10,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 134
-        },
-        {
-          "name": "audio",
-          "type": "AUDIO",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "meta_batch",
-          "type": "VHS_BatchManager",
-          "link": null,
-          "shape": 7
-        },
-        {
-          "name": "vae",
-          "type": "VAE",
-          "link": null,
-          "shape": 7
-        }
-      ],
-      "outputs": [
-        {
-          "name": "Filenames",
-          "type": "VHS_FILENAMES",
-          "links": null,
-          "shape": 3
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "VHS_VideoCombine"
-      },
-      "widgets_values": {
-        "frame_rate": 8,
-        "loop_count": 0,
-        "filename_prefix": "CogVideoX-I2V",
-        "format": "video/h264-mp4",
-        "pix_fmt": "yuv420p",
-        "crf": 19,
-        "save_metadata": true,
-        "pingpong": false,
-        "save_output": false,
-        "videopreview": {
-          "hidden": false,
-          "paused": false,
-          "params": {
-            "filename": "CogVideoX-I2V_00004.mp4",
-            "subfolder": "",
-            "type": "temp",
-            "format": "video/h264-mp4",
-            "frame_rate": 8
-          },
-          "muted": false
-        }
-      }
-    },
-    {
       "id": 37,
       "type": "ImageResizeKJ",
       "pos": {
@@ -396,7 +322,7 @@
         "1": 266
       },
       "flags": {},
-      "order": 4,
+      "order": 3,
       "mode": 0,
       "inputs": [
         {
@@ -476,7 +402,7 @@
         "1": 144
       },
       "flags": {},
-      "order": 7,
+      "order": 6,
       "mode": 0,
       "inputs": [
         {
@@ -575,52 +501,78 @@
       ]
     },
     {
-      "id": 64,
-      "type": "CogVideoImageEncodeFunInP",
+      "id": 44,
+      "type": "VHS_VideoCombine",
       "pos": {
-        "0": 1861.032958984375,
-        "1": 752.6453247070312
+        "0": 1884,
+        "1": -6
       },
-      "size": {
-        "0": 380.4000244140625,
-        "1": 146
-      },
+      "size": [
+        605.3909912109375,
+        310
+      ],
       "flags": {},
-      "order": 3,
+      "order": 9,
       "mode": 0,
       "inputs": [
         {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 134
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": null,
+          "shape": 7
+        },
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "link": null,
+          "shape": 7
+        },
+        {
           "name": "vae",
           "type": "VAE",
-          "link": null
-        },
-        {
-          "name": "start_image",
-          "type": "IMAGE",
-          "link": null
-        },
-        {
-          "name": "end_image",
-          "type": "IMAGE",
           "link": null,
           "shape": 7
         }
       ],
       "outputs": [
         {
-          "name": "image_cond_latents",
-          "type": "LATENT",
-          "links": null
+          "name": "Filenames",
+          "type": "VHS_FILENAMES",
+          "links": null,
+          "shape": 3
         }
       ],
       "properties": {
-        "Node name for S&R": "CogVideoImageEncodeFunInP"
+        "Node name for S&R": "VHS_VideoCombine"
       },
-      "widgets_values": [
-        49,
-        false,
-        0
-      ]
+      "widgets_values": {
+        "frame_rate": 8,
+        "loop_count": 0,
+        "filename_prefix": "CogVideoX_1_5_I2V",
+        "format": "video/h264-mp4",
+        "pix_fmt": "yuv420p",
+        "crf": 19,
+        "save_metadata": true,
+        "pingpong": false,
+        "save_output": false,
+        "videopreview": {
+          "hidden": false,
+          "paused": false,
+          "params": {
+            "filename": "CogVideoX-I2V_00004.mp4",
+            "subfolder": "",
+            "type": "temp",
+            "format": "video/h264-mp4",
+            "frame_rate": 8
+          },
+          "muted": false
+        }
+      }
     }
   ],
   "links": [
@@ -725,10 +677,10 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.8390545288825803,
+      "scale": 0.7627768444387097,
       "offset": [
-        351.5513339440394,
-        161.02862760095286
+        716.7143770104391,
+        291.75859557289965
       ]
     }
   },
