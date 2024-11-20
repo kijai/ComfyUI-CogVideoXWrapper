@@ -254,19 +254,20 @@ class CogVideoImageEncode:
         except:
             pass
         
-        if noise_aug_strength > 0:
-            start_image = add_noise_to_reference_video(start_image, ratio=noise_aug_strength)
-            if end_image is not None:
-                end_image = add_noise_to_reference_video(end_image, ratio=noise_aug_strength)
        
         latents_list = []
 
         start_image = (start_image * 2.0 - 1.0).to(vae.dtype).to(device).unsqueeze(0).permute(0, 4, 1, 2, 3) # B, C, T, H, W
+        if noise_aug_strength > 0:
+            start_image = add_noise_to_reference_video(start_image, ratio=noise_aug_strength)
         start_latents = vae.encode(start_image).latent_dist.sample(generator)
         start_latents = start_latents.permute(0, 2, 1, 3, 4)  # B, T, C, H, W
+        
 
         if end_image is not None:
             end_image = (end_image * 2.0 - 1.0).to(vae.dtype).to(device).unsqueeze(0).permute(0, 4, 1, 2, 3)
+            if noise_aug_strength > 0:
+                end_image = add_noise_to_reference_video(end_image, ratio=noise_aug_strength)
             end_latents = vae.encode(end_image).latent_dist.sample(generator)
             end_latents = end_latents.permute(0, 2, 1, 3, 4)  # B, T, C, H, W
             latents_list = [start_latents, end_latents]
