@@ -713,8 +713,8 @@ class CogVideoSampler:
                 freenoise=context_options["freenoise"] if context_options is not None else None,
                 controlnet=controlnet,
                 tora=tora_trajectory if tora_trajectory is not None else None,
-                image_cond_start_percent=image_cond_start_percent,
-                image_cond_end_percent=image_cond_end_percent
+                image_cond_start_percent=image_cond_start_percent if image_cond_latents is not None else 0.0,
+                image_cond_end_percent=image_cond_end_percent if image_cond_latents is not None else 1.0,
             )
         if not model["cpu_offloading"] and model["manual_offloading"]:
             pipe.transformer.to(offload_device)
