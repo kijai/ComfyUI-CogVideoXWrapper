@@ -349,6 +349,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         freenoise: Optional[bool] = True,
         controlnet: Optional[dict] = None,
         tora: Optional[dict] = None,
+        image_cond_start_percent: float = 0.0,
+        image_cond_end_percent: float = 1.0,
         
     ):
         """
@@ -708,8 +710,13 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
+                    current_step_percentage = i / num_inference_steps
+
                     if image_cond_latents is not None:
-                        latent_image_input = torch.cat([image_cond_latents] * 2) if do_classifier_free_guidance else image_cond_latents
+                        if not image_cond_start_percent <= current_step_percentage <= image_cond_end_percent:
+                            latent_image_input = torch.zeros_like(latent_model_input)
+                        else:
+                            latent_image_input = torch.cat([image_cond_latents] * 2) if do_classifier_free_guidance else image_cond_latents
                         if fun_mask is not None: #for fun img2vid and interpolation
                             fun_inpaint_mask = torch.cat([fun_mask] * 2) if do_classifier_free_guidance else fun_mask
                             masks_input = torch.cat([fun_inpaint_mask, latent_image_input], dim=2)
@@ -726,7 +733,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
 
-                    current_step_percentage = i / num_inference_steps
+                    
 
                     if controlnet is not None:
                         controlnet_states = None

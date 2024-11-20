@@ -221,6 +221,8 @@ class CogVideoImageEncode:
                 "enable_tiling": ("BOOLEAN", {"default": False, "tooltip": "Enable tiling for the VAE to reduce memory usage"}),
                 "noise_aug_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.001, "tooltip": "Augment image with noise"}),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01}),
+                "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
             },
         }
 
@@ -229,7 +231,7 @@ class CogVideoImageEncode:
     FUNCTION = "encode"
     CATEGORY = "CogVideoWrapper"
 
-    def encode(self, vae, start_image, end_image=None, enable_tiling=False, noise_aug_strength=0.0, strength=1.0):
+    def encode(self, vae, start_image, end_image=None, enable_tiling=False, noise_aug_strength=0.0, strength=1.0, start_percent=0.0, end_percent=1.0):
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         generator = torch.Generator(device=device).manual_seed(0)
@@ -277,7 +279,11 @@ class CogVideoImageEncode:
         log.info(f"Encoded latents shape: {final_latents.shape}")
         vae.to(offload_device)
         
-        return ({"samples": final_latents}, )
+        return ({
+            "samples": final_latents,
+            "start_percent": start_percent,
+            "end_percent": end_percent
+            }, )
     
 class CogVideoImageEncodeFunInP:
     @classmethod
@@ -608,6 +614,8 @@ class CogVideoSampler:
         if image_cond_latents is not None:
             assert supports_image_conds, "Image condition latents only supported for I2V and Interpolation models"
             image_conds = image_cond_latents["samples"]
+            image_cond_start_percent = image_cond_latents.get("start_percent", 0.0)
+            image_cond_end_percent = image_cond_latents.get("end_percent", 1.0)
             if "1.5" in model_name or "1_5" in model_name:
                 image_conds = image_conds / 0.7 # needed for 1.5 models
         else:
@@ -704,6 +712,8 @@ class CogVideoSampler:
                 freenoise=context_options["freenoise"] if context_options is not None else None,
                 controlnet=controlnet,
                 tora=tora_trajectory if tora_trajectory is not None else None,
+                image_cond_start_percent=image_cond_start_percent,
+                image_cond_end_percent=image_cond_end_percent
             )
         if not model["cpu_offloading"] and model["manual_offloading"]:
             pipe.transformer.to(offload_device)
