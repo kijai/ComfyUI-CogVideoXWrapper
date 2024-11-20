@@ -689,8 +689,9 @@ class CogVideoSampler:
         except:
             pass
   
-        autocastcondition = not model["onediff"] or not dtype == torch.float32
-        autocast_context = torch.autocast(mm.get_autocast_device(device), dtype=dtype) if autocastcondition else nullcontext()
+        autocast_context = torch.autocast(
+            mm.get_autocast_device(device), dtype=dtype
+        ) if any(q in model["quantization"] for q in ("e4m3fn", "GGUF")) else nullcontext()
         with autocast_context:
             latents = model["pipe"](
                 num_inference_steps=steps,

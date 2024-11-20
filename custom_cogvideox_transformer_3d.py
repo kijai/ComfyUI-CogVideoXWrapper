@@ -98,6 +98,9 @@ class CogVideoXAttnProcessor2_0:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
             attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
+        if attn.to_q.weight.dtype == torch.float16 or attn.to_q.weight.dtype == torch.bfloat16:
+            hidden_states = hidden_states.to(attn.to_q.weight.dtype)
+
         if attention_mode != "fused_sdpa" or attention_mode != "fused_sageattn":
             query = attn.to_q(hidden_states)
             key = attn.to_k(hidden_states)
@@ -124,7 +127,7 @@ class CogVideoXAttnProcessor2_0:
             query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
-                 
+                
         if attention_mode == "sageattn" or attention_mode == "fused_sageattn":
             hidden_states = sageattn_func(query, key, value, attn_mask=attention_mask, dropout_p=0.0,is_causal=False)
             hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -135,7 +138,7 @@ class CogVideoXAttnProcessor2_0:
             hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         elif attention_mode == "comfy":
             hidden_states = optimized_attention(query, key, value, mask=attention_mask, heads=attn.heads, skip_reshape=True)
- 
+
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
         # dropout

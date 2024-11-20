@@ -391,6 +391,7 @@ class DownloadAndLoadCogVideoModel:
         pipeline = {
             "pipe": pipe,
             "dtype": dtype,
+            "quantization": quantization,
             "base_path": base_path,
             "onediff": True if compile == "onediff" else False,
             "cpu_offloading": enable_sequential_cpu_offload,
@@ -571,6 +572,7 @@ class DownloadAndLoadCogVideoGGUFModel:
         pipeline = {
             "pipe": pipe,
             "dtype": vae_dtype,
+            "quantization": "GGUF",
             "base_path": model,
             "onediff": False,
             "cpu_offloading": enable_sequential_cpu_offload,
@@ -802,6 +804,7 @@ class CogVideoXModelLoader:
         pipeline = {
             "pipe": pipe,
             "dtype": base_dtype,
+            "quantization": quantization,
             "base_path": model,
             "onediff": False,
             "cpu_offloading": enable_sequential_cpu_offload,
