@@ -270,13 +270,13 @@ class DownloadAndLoadCogVideoModel:
                             transformer = merge_lora(transformer, l["path"], l["strength"])
                         except:
                             raise ValueError(f"Can't recognize LoRA {l['path']}")
-                    
-                pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
-                if fuse:
-                    lora_scale = 1
-                    if dimensionx_lora:
-                        lora_scale = lora_scale / lora_rank
-                    pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
+                if adapter_list:
+                    pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
+                    if fuse:
+                        lora_scale = 1
+                        if dimensionx_lora:
+                            lora_scale = lora_scale / lora_rank
+                        pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
            
 
         if "fused" in attention_mode:
