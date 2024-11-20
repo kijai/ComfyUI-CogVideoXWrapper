@@ -571,7 +571,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             #    raise ValueError(f"Tora trajectory length {trajectory_length} does not match inpaint_latents count {latents.shape[2]}")
             for module in self.transformer.fuser_list:
                 for param in module.parameters():
-                    param.data = param.data.to(device)
+                    param.data = param.data.to(self.vae_dtype).to(device)
 
         logger.info(f"Sampling {num_frames} frames in {latent_frames} latent frames at {width}x{height} with {num_inference_steps} inference steps")
 
@@ -733,8 +733,6 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
 
-                    
-
                     if controlnet is not None:
                         controlnet_states = None
                         if (control_start <= current_step_percentage <= control_end):
@@ -751,7 +749,6 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                                 controlnet_states = [x.to(dtype=self.vae_dtype) for x in controlnet_states]
                             else:
                                 controlnet_states = controlnet_states.to(dtype=self.vae_dtype)
-
 
                     # predict noise model_output
                     noise_pred = self.transformer(
