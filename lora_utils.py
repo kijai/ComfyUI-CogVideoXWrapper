@@ -414,12 +414,15 @@ def merge_lora(transformer, lora_path, multiplier, device='cpu', dtype=torch.flo
             alpha = 1.0
 
         curr_layer.weight.data = curr_layer.weight.data.to(device)
-        if len(weight_up.shape) == 4:
-            curr_layer.weight.data += multiplier * alpha * torch.mm(weight_up.squeeze(3).squeeze(2),
-                                                                    weight_down.squeeze(3).squeeze(2)).unsqueeze(
-                2).unsqueeze(3)
-        else:
-            curr_layer.weight.data += multiplier * alpha * torch.mm(weight_up, weight_down)
+        try:
+            if len(weight_up.shape) == 4:
+                curr_layer.weight.data += multiplier * alpha * torch.mm(weight_up.squeeze(3).squeeze(2),
+                                                                        weight_down.squeeze(3).squeeze(2)).unsqueeze(
+                    2).unsqueeze(3)
+            else:
+                curr_layer.weight.data += multiplier * alpha * torch.mm(weight_up, weight_down)
+        except:
+            print(f"Could not apply LoRA weight in layer {layer}")
 
     return transformer
 
