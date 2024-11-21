@@ -717,35 +717,40 @@ class CogVideoXModelLoader:
 
         #LoRAs
         if lora is not None:
-            from .lora_utils import merge_lora#, load_lora_into_transformer
-            if "fun" in model.lower():
-                for l in lora:
-                    log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
-                    transformer = merge_lora(transformer, l["path"], l["strength"])
-            else:
-                adapter_list = []
-                adapter_weights = []
-                for l in lora:
-                    fuse = True if l["fuse_lora"] else False
-                    lora_sd = load_torch_file(l["path"])             
-                    for key, val in lora_sd.items():
-                        if "lora_B" in key:
-                            lora_rank = val.shape[1]
-                            break
+            dimensionx_loras = ["orbit", "dimensionx"] # for now dimensionx loras need scaling
+            dimensionx_lora = False
+            adapter_list = []
+            adapter_weights = []
+            for l in lora:
+                if any(item in l["path"].lower() for item in dimensionx_loras):
+                    dimensionx_lora = True
+                fuse = True if l["fuse_lora"] else False
+                lora_sd = load_torch_file(l["path"])
+                lora_rank = None            
+                for key, val in lora_sd.items():
+                    if "lora_B" in key:
+                        lora_rank = val.shape[1]
+                        break
+                if lora_rank is not None:
                     log.info(f"Merging rank {lora_rank} LoRA weights from {l['path']} with strength {l['strength']}")
                     adapter_name = l['path'].split("/")[-1].split(".")[0]
                     adapter_weight = l['strength']
                     pipe.load_lora_weights(l['path'], weight_name=l['path'].split("/")[-1], lora_rank=lora_rank, adapter_name=adapter_name)
                     
-                    #transformer = load_lora_into_transformer(lora, transformer)
                     adapter_list.append(adapter_name)
                     adapter_weights.append(adapter_weight)
-                for l in lora:
-                    pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
+                else:
+                    try: #Fun trainer LoRAs are loaded differently
+                        from .lora_utils import merge_lora
+                        log.info(f"Merging LoRA weights from {l['path']} with strength {l['strength']}")
+                        pipe.transformer = merge_lora(pipe.transformer, l["path"], l["strength"], device=transformer_load_device, state_dict=lora_sd)
+                    except:
+                        raise ValueError(f"Can't recognize LoRA {l['path']}")
+            if adapter_list:
+                pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
                 if fuse:
                     lora_scale = 1
-                    dimension_loras = ["orbit", "dimensionx"] # for now dimensionx loras need scaling
-                    if any(item in lora[-1]["path"].lower() for item in dimension_loras):
+                    if dimensionx_lora:
                         lora_scale = lora_scale / lora_rank
                     pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
 
