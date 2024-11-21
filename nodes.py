@@ -602,6 +602,7 @@ class CogVideoSampler:
 
     def process(self, model, positive, negative, steps, cfg, seed, scheduler, num_frames, samples=None,
                 denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None):
+        mm.unload_all_models()
         mm.soft_empty_cache()
 
         model_name = model.get("model_name", "")

@@ -406,8 +406,8 @@ def merge_lora(transformer, lora_path, multiplier, device='cpu', dtype=torch.flo
                 else:
                     temp_name = layer_infos.pop(0)
 
-        weight_up = elems['lora_up.weight'].to(dtype)
-        weight_down = elems['lora_down.weight'].to(dtype)
+        weight_up = elems['lora_up.weight'].to(dtype).to(device)
+        weight_down = elems['lora_down.weight'].to(dtype).to(device)
         if 'alpha' in elems.keys():
             alpha = elems['alpha'].item() / weight_up.shape[1]
         else:
