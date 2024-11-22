@@ -361,7 +361,7 @@ class CogVideoImageEncodeFunInP:
 
         mask = torch.zeros_like(masked_image_latents[:, :, :1, :, :])
         if end_image is not None:
-            mask[:, -1, :, :, :] = vae_scaling_factor
+            mask[:, -1, :, :, :] = 0
         mask[:, 0, :, :, :] = vae_scaling_factor
 
         final_latents = masked_image_latents * vae_scaling_factor
