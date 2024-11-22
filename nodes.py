@@ -606,7 +606,12 @@ class CogVideoSampler:
         mm.soft_empty_cache()
 
         model_name = model.get("model_name", "")
-        supports_image_conds = True if "I2V" in model_name or "interpolation" in model_name.lower() or "fun" in model_name.lower() else False
+        supports_image_conds = True if (
+        "I2V" in model_name or 
+        "interpolation" in model_name.lower() or 
+        "fun" in model_name.lower() or
+        "img2vid" in model_name.lower()
+        ) else False
         if "fun" in model_name.lower() and not ("pose" in model_name.lower() or "control" in model_name.lower()) and image_cond_latents is not None:
             assert image_cond_latents["mask"] is not None, "For fun inpaint models use CogVideoImageEncodeFunInP"
             fun_mask = image_cond_latents["mask"]
