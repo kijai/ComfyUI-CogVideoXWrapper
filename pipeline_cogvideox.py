@@ -507,6 +507,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     image_cond_latents = image_cond_latents.repeat(1, latents.shape[1], 1, 1, 1)
             else:
                 logger.info(f"Received {image_cond_latents.shape[1]} image conditioning frames")
+            image_cond_latents = image_cond_latents.to(self.vae_dtype)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
