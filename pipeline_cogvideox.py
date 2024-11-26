@@ -473,22 +473,47 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         if image_cond_latents is not None:
             if image_cond_latents.shape[1] == 3:
                 logger.info("More than one image conditioning frame received, interpolating")
+                total_padding = latents.shape[1] - 3
+                half_padding = total_padding // 2
+
                 padding_shape = (
                     batch_size,
-                    (latents.shape[1] - 3),
+                    half_padding,
                     self.vae_latent_channels,
                     height // self.vae_scale_factor_spatial,
                     width // self.vae_scale_factor_spatial,
                 )
                 latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae_dtype)
-                middle_frame = image_cond_latents[:, 2, :, :, :]
-                image_cond_latents = torch.cat([image_cond_latents[:, 0, :, :, :].unsqueeze(1), latent_padding, image_cond_latents[:, -1, :, :, :].unsqueeze(1)], dim=1)
-                middle_frame_idx = image_cond_latents.shape[1] // 2
-                image_cond_latents = image_cond_latents[:, middle_frame_idx, :, :, :] = middle_frame
+                middle_frame = image_cond_latents[:, 1, :, :, :].unsqueeze(1)
+                
+                image_cond_latents = torch.cat([
+                    image_cond_latents[:, 0, :, :, :].unsqueeze(1),
+                    latent_padding,
+                    middle_frame,
+                    latent_padding,
+                    image_cond_latents[:, -1, :, :, :].unsqueeze(1)
+                ], dim=1)
+                
+                # If total_padding is odd, add one more padding after the middle frame
+                if total_padding % 2 != 0:
+                    extra_padding = torch.zeros(
+                        (batch_size, 1, self.vae_latent_channels,
+                        height // self.vae_scale_factor_spatial,
+                        width // self.vae_scale_factor_spatial),
+                        device=device, dtype=self.vae_dtype
+                    )
+                    image_cond_latents = torch.cat([image_cond_latents, extra_padding], dim=1)
                 
                 if self.transformer.config.patch_size_t is not None:
                     first_frame = image_cond_latents[:, : image_cond_latents.size(1) % self.transformer.config.patch_size_t, ...]
                     image_cond_latents = torch.cat([first_frame, image_cond_latents], dim=1)
+
+                middle_frame_idx = image_cond_latents.shape[1] // 2
+                print("middle_frame_idx", middle_frame_idx)
+                print(middle_frame.shape)
+                print(image_cond_latents.shape)
+                
+
             elif image_cond_latents.shape[1] == 2:
                 logger.info("More than one image conditioning frame received, interpolating")
                 padding_shape = (
