@@ -124,7 +124,19 @@ class DownloadAndLoadCogVideoModel:
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
                 "lora": ("COGLORA", {"default": None}),
                 "compile_args":("COMPILEARGS", ),
-                "attention_mode": (["sdpa", "sageattn", "fused_sdpa", "fused_sageattn", "comfy"], {"default": "sdpa"}),
+                "attention_mode": ([
+                    "sdpa",
+                    "fused_sdpa",
+                    "sageattn",
+                    "fused_sageattn", 
+                    "sageattn_qk_int8_pv_fp8_cuda",
+                    "sageattn_qk_int8_pv_fp16_cuda",
+                    "sageattn_qk_int8_pv_fp16_triton",
+                    "fused_sageattn_qk_int8_pv_fp8_cuda",
+                    "fused_sageattn_qk_int8_pv_fp16_cuda",
+                    "fused_sageattn_qk_int8_pv_fp16_triton",
+                    "comfy"
+                    ], {"default": "sdpa"}),
                 "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
             }
         }
@@ -139,11 +151,18 @@ class DownloadAndLoadCogVideoModel:
                   enable_sequential_cpu_offload=False, block_edit=None, lora=None, compile_args=None, 
                   attention_mode="sdpa", load_device="main_device"):
         
+        transformer = None
+
         if "sage" in attention_mode:
             try:
                 from sageattention import sageattn
             except Exception as e:
                 raise ValueError(f"Can't import SageAttention: {str(e)}")
+            if "qk_int8" in attention_mode:
+                try:
+                    from sageattention import sageattn_qk_int8_pv_fp16_cuda
+                except Exception as e:
+                    raise ValueError(f"Can't import SageAttention 2.0.0: {str(e)}")
         
         if precision == "fp16" and "1.5" in model:
             raise ValueError("1.5 models do not currently work in fp16")
@@ -218,7 +237,7 @@ class DownloadAndLoadCogVideoModel:
                 local_dir_use_symlinks=False,
             )
 
-        transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder)
+        transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder, attention_mode=attention_mode)
         transformer = transformer.to(dtype).to(transformer_load_device)
 
         if "1.5" in model:
@@ -291,7 +310,6 @@ class DownloadAndLoadCogVideoModel:
             for module in pipe.transformer.modules():
                 if isinstance(module, Attention):
                     module.fuse_projections(fuse=True)
-        pipe.transformer.attention_mode = attention_mode
 
         if compile_args is not None:
             pipe.transformer.to(memory_format=torch.channels_last)
@@ -515,7 +533,7 @@ class DownloadAndLoadCogVideoGGUFModel:
             else:
                 transformer_config["in_channels"] = 16
 
-            transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
+            transformer = CogVideoXTransformer3DModel.from_config(transformer_config, attention_mode=attention_mode)
             cast_dtype = vae_dtype
             params_to_keep = {"patch_embed", "pos_embedding", "time_embedding"}
             if "2b" in model:
@@ -696,7 +714,7 @@ class CogVideoXModelLoader:
                     transformer_config["sample_width"] = 300
 
         with init_empty_weights():
-            transformer = CogVideoXTransformer3DModel.from_config(transformer_config)
+            transformer = CogVideoXTransformer3DModel.from_config(transformer_config, attention_mode=attention_mode)
 
         #load weights
         #params_to_keep = {}

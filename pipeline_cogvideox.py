@@ -471,7 +471,25 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         # 5.5.
         if image_cond_latents is not None:
-            if image_cond_latents.shape[1] == 2:
+            if image_cond_latents.shape[1] == 3:
+                logger.info("More than one image conditioning frame received, interpolating")
+                padding_shape = (
+                    batch_size,
+                    (latents.shape[1] - 3),
+                    self.vae_latent_channels,
+                    height // self.vae_scale_factor_spatial,
+                    width // self.vae_scale_factor_spatial,
+                )
+                latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae_dtype)
+                middle_frame = image_cond_latents[:, 2, :, :, :]
+                image_cond_latents = torch.cat([image_cond_latents[:, 0, :, :, :].unsqueeze(1), latent_padding, image_cond_latents[:, -1, :, :, :].unsqueeze(1)], dim=1)
+                middle_frame_idx = image_cond_latents.shape[1] // 2
+                image_cond_latents = image_cond_latents[:, middle_frame_idx, :, :, :] = middle_frame
+                
+                if self.transformer.config.patch_size_t is not None:
+                    first_frame = image_cond_latents[:, : image_cond_latents.size(1) % self.transformer.config.patch_size_t, ...]
+                    image_cond_latents = torch.cat([first_frame, image_cond_latents], dim=1)
+            elif image_cond_latents.shape[1] == 2:
                 logger.info("More than one image conditioning frame received, interpolating")
                 padding_shape = (
                     batch_size,
@@ -593,9 +611,25 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     counter = torch.zeros_like(latent_model_input)
                     noise_pred = torch.zeros_like(latent_model_input)
                     
+                    current_step_percentage = i / num_inference_steps
+
                     if image_cond_latents is not None:
-                        latent_image_input = torch.cat([image_cond_latents] * 2) if do_classifier_free_guidance else image_cond_latents
-                        latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
+                        if not image_cond_start_percent <= current_step_percentage <= image_cond_end_percent:
+                            latent_image_input = torch.zeros_like(latent_model_input)
+                        else:
+                            latent_image_input = torch.cat([image_cond_latents] * 2) if do_classifier_free_guidance else image_cond_latents
+                        if fun_mask is not None: #for fun img2vid and interpolation
+                            fun_inpaint_mask = torch.cat([fun_mask] * 2) if do_classifier_free_guidance else fun_mask
+                            masks_input = torch.cat([fun_inpaint_mask, latent_image_input], dim=2)
+                            latent_model_input = torch.cat([latent_model_input, masks_input], dim=2)
+                        else:
+                            latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
+                    else: # for Fun inpaint vid2vid
+                        if fun_mask is not None:
+                            fun_inpaint_mask = torch.cat([fun_mask] * 2) if do_classifier_free_guidance else fun_mask
+                            fun_inpaint_masked_video_latents = torch.cat([fun_masked_video_latents] * 2) if do_classifier_free_guidance else fun_masked_video_latents
+                            fun_inpaint_latents = torch.cat([fun_inpaint_mask, fun_inpaint_masked_video_latents], dim=2).to(latents.dtype)
+                            latent_model_input = torch.cat([latent_model_input, fun_inpaint_latents], dim=2)
 
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
