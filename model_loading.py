@@ -86,6 +86,42 @@ class CogVideoLoraSelect:
         cog_loras_list.append(cog_lora)
         print(cog_loras_list)
         return (cog_loras_list,)
+
+class CogVideoLoraSelectComfy:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+               "lora": (folder_paths.get_filename_list("loras"), 
+                {"tooltip": "LORA models are expected to be in ComfyUI/models/CogVideo/loras with .safetensors extension"}),
+                "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.0001, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
+            },
+            "optional": {
+                "prev_lora":("COGLORA", {"default": None, "tooltip": "For loading multiple LoRAs"}),
+                "fuse_lora": ("BOOLEAN", {"default": False, "tooltip": "Fuse the LoRA weights into the transformer"}),
+            }
+        }
+
+    RETURN_TYPES = ("COGLORA",)
+    RETURN_NAMES = ("lora", )
+    FUNCTION = "getlorapath"
+    CATEGORY = "CogVideoWrapper"
+
+    def getlorapath(self, lora, strength, prev_lora=None, fuse_lora=False):
+        cog_loras_list = []
+
+        cog_lora = {
+            "path": folder_paths.get_full_path("loras", lora),
+            "strength": strength,
+            "name": lora.split(".")[0],
+            "fuse_lora": fuse_lora
+        }
+        if prev_lora is not None:
+            cog_loras_list.extend(prev_lora)
+            
+        cog_loras_list.append(cog_lora)
+        print(cog_loras_list)
+        return (cog_loras_list,)
     
 #region DownloadAndLoadCogVideoModel
 class DownloadAndLoadCogVideoModel:
@@ -1048,6 +1084,7 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoLoraSelect": CogVideoLoraSelect,
     "CogVideoXVAELoader": CogVideoXVAELoader,
     "CogVideoXModelLoader": CogVideoXModelLoader,
+    "CogVideoLoraSelectComfy": CogVideoLoraSelectComfy,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -1057,4 +1094,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoLoraSelect": "CogVideo LoraSelect",
     "CogVideoXVAELoader": "CogVideoX VAE Loader",
     "CogVideoXModelLoader": "CogVideoX Model Loader",
+    "CogVideoLoraSelectComfy": "CogVideo LoraSelect Comfy",
     }
