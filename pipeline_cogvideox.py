@@ -351,6 +351,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         tora: Optional[dict] = None,
         image_cond_start_percent: float = 0.0,
         image_cond_end_percent: float = 1.0,
+        consis_id: Optional[dict] = None,
         
     ):
         """
@@ -762,6 +763,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                         controlnet_states=controlnet_states,
                         controlnet_weights=control_weights,
                         video_flow_features=video_flow_features if (tora is not None and tora["start_percent"] <= current_step_percentage <= tora["end_percent"]) else None,
+                        consis_id=consis_id,
                     )[0]
                     noise_pred = noise_pred.float()
                     if isinstance(self.scheduler, CogVideoXDPMScheduler):
@@ -798,5 +800,5 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         # Offload all models
         self.maybe_free_model_hooks()
-
+        print("latents shape", latents.shape)
         return latents

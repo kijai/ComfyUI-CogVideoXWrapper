@@ -19,6 +19,10 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+import os
+import json
+import glob
+
 import numpy as np
 from einops import rearrange
 
@@ -34,6 +38,8 @@ from diffusers.models.normalization import AdaLayerNorm, CogVideoXLayerNormZero
 from diffusers.loaders import PeftAdapterMixin
 from diffusers.models.embeddings import apply_rotary_emb
 from .embeddings import CogVideoXPatchEmbed
+
+from .consis_id.models.local_facial_extractor import LocalFacialExtractor, PerceiverCrossAttention
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -408,6 +414,13 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         use_rotary_positional_embeddings: bool = False,
         use_learned_positional_embeddings: bool = False,
         patch_bias: bool = True,
+        is_train_face: bool = False,
+        is_kps: bool = False,
+        cross_attn_interval: int = 1,
+        LFE_num_tokens: int = 32,
+        LFE_output_dim: int = 768,
+        LFE_heads: int = 12,
+        local_face_scale: float = 1.0,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -497,10 +510,100 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         self.fastercache_device = "cuda"
         self.fastercache_num_blocks_to_cache = len(self.transformer_blocks)
         self.attention_mode = "sdpa"
+
+        if is_train_face:
+            self.inner_dim = inner_dim
+            self.cross_attn_interval = cross_attn_interval
+            self.num_ca = num_layers // cross_attn_interval
+            self.LFE_num_tokens = LFE_num_tokens
+            self.LFE_output_dim = LFE_output_dim
+            self.LFE_heads = LFE_heads
+            self.LFE_final_output_dim = int(self.inner_dim / 3 * 2)
+            self.local_face_scale = local_face_scale
+            self._init_face_inputs()
         
 
     def _set_gradient_checkpointing(self, module, value=False):
         self.gradient_checkpointing = value
+
+    def _init_face_inputs(self):
+        device = self.device
+        weight_dtype = next(self.transformer_blocks.parameters()).dtype
+        self.local_facial_extractor = LocalFacialExtractor()
+        self.local_facial_extractor.to(device, dtype=weight_dtype)
+        self.perceiver_cross_attention = nn.ModuleList([
+            PerceiverCrossAttention(dim=self.inner_dim, dim_head=128, heads=16, kv_dim=self.LFE_final_output_dim).to(device, dtype=weight_dtype) for _ in range(self.num_ca)
+        ])
+    @classmethod
+    def from_pretrained_cus(cls, pretrained_model_path, subfolder=None, config_path=None, transformer_additional_kwargs={}):
+        if subfolder:
+            config_path = config_path or pretrained_model_path
+            config_file = os.path.join(config_path, subfolder, 'config.json')
+            pretrained_model_path = os.path.join(pretrained_model_path, subfolder)
+        else:
+            config_file = os.path.join(config_path or pretrained_model_path, 'config.json')
+
+        print(f"Loading 3D transformer's pretrained weights from {pretrained_model_path} ...")
+
+        # Check if config file exists
+        if not os.path.isfile(config_file):
+            raise RuntimeError(f"Configuration file '{config_file}' does not exist")
+
+        # Load the configuration
+        with open(config_file, "r") as f:
+            config = json.load(f)
+
+        from diffusers.utils import WEIGHTS_NAME
+        model = cls.from_config(config, **transformer_additional_kwargs)
+        model_file = os.path.join(pretrained_model_path, WEIGHTS_NAME)
+        model_file_safetensors = model_file.replace(".bin", ".safetensors")
+        if os.path.exists(model_file):
+            state_dict = torch.load(model_file, map_location="cpu")
+        elif os.path.exists(model_file_safetensors):
+            from safetensors.torch import load_file
+            state_dict = load_file(model_file_safetensors)
+        else:
+            from safetensors.torch import load_file
+            model_files_safetensors = glob.glob(os.path.join(pretrained_model_path, "*.safetensors"))
+            state_dict = {}
+            for model_file_safetensors in model_files_safetensors:
+                _state_dict = load_file(model_file_safetensors)
+                for key in _state_dict:
+                    state_dict[key] = _state_dict[key]
+
+        if model.state_dict()['patch_embed.proj.weight'].size() != state_dict['patch_embed.proj.weight'].size():
+            new_shape   = model.state_dict()['patch_embed.proj.weight'].size()
+            if len(new_shape) == 5:
+                state_dict['patch_embed.proj.weight'] = state_dict['patch_embed.proj.weight'].unsqueeze(2).expand(new_shape).clone()
+                state_dict['patch_embed.proj.weight'][:, :, :-1] = 0
+            else:
+                if model.state_dict()['patch_embed.proj.weight'].size()[1] > state_dict['patch_embed.proj.weight'].size()[1]:
+                    model.state_dict()['patch_embed.proj.weight'][:, :state_dict['patch_embed.proj.weight'].size()[1], :, :] = state_dict['patch_embed.proj.weight']
+                    model.state_dict()['patch_embed.proj.weight'][:, state_dict['patch_embed.proj.weight'].size()[1]:, :, :] = 0
+                    state_dict['patch_embed.proj.weight'] = model.state_dict()['patch_embed.proj.weight']
+                else:
+                    model.state_dict()['patch_embed.proj.weight'][:, :, :, :] = state_dict['patch_embed.proj.weight'][:, :model.state_dict()['patch_embed.proj.weight'].size()[1], :, :]
+                    state_dict['patch_embed.proj.weight'] = model.state_dict()['patch_embed.proj.weight']
+
+        tmp_state_dict = {} 
+        for key in state_dict:
+            if key in model.state_dict().keys() and model.state_dict()[key].size() == state_dict[key].size():
+                tmp_state_dict[key] = state_dict[key]
+            else:
+                print(key, "Size don't match, skip")
+        state_dict = tmp_state_dict
+
+        m, u = model.load_state_dict(state_dict, strict=False)
+        print(f"### missing keys: {len(m)}; \n### unexpected keys: {len(u)};")
+        print(m)
+        
+        params = [p.numel() if "mamba" in n else 0 for n, p in model.named_parameters()]
+        print(f"### Mamba Parameters: {sum(params) / 1e6} M")
+
+        params = [p.numel() if "attn1." in n else 0 for n, p in model.named_parameters()]
+        print(f"### attn1 Parameters: {sum(params) / 1e6} M")
+        
+        return model
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
@@ -574,6 +677,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         controlnet_states: torch.Tensor = None,
         controlnet_weights: Optional[Union[float, int, list, np.ndarray, torch.FloatTensor]] = 1.0,
         video_flow_features: Optional[torch.Tensor] = None,
+        consis_id: Optional[dict] = None,
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
@@ -608,6 +712,13 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         encoder_hidden_states = hidden_states[:, :text_seq_length]
         hidden_states = hidden_states[:, text_seq_length:]
         #print("hidden_states after split", hidden_states.shape) #1.5: torch.Size([2, 2700, 3072]) #1.0: torch.Size([2, 5400, 3072])
+
+        # ConsisID: fuse clip and insightface
+        if self.is_train_face:
+            id_cond = consis_id["id_cond"]
+            id_vit_hidden = consis_id["id_vit_hidden"]
+            assert id_cond is not None and id_vit_hidden is not None
+            valid_face_emb = self.local_facial_extractor(id_cond, id_vit_hidden)  # torch.Size([1, 1280]), list[5](torch.Size([1, 577, 1024]))  ->  torch.Size([1, 32, 2048])
       
         if self.use_fastercache:
             self.fastercache_counter+=1
@@ -684,6 +795,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
             recovered_uncond = rearrange(recovered_uncond.to(output.dtype), "(B T) C H W -> B T C H W", B=bb, C=cc, T=tt, H=hh, W=ww)
             output = torch.cat([output, recovered_uncond])
         else:
+            ca_idx = 0
             for i, block in enumerate(self.transformer_blocks):
                 hidden_states, encoder_hidden_states = block(
                     hidden_states=hidden_states,
@@ -712,6 +824,12 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     elif isinstance(controlnet_weights, (float, int)):
                         controlnet_block_weight = controlnet_weights                    
                     hidden_states = hidden_states + controlnet_states_block * controlnet_block_weight
+
+                # ConsisID
+                if self.is_train_face:
+                    if i % self.cross_attn_interval == 0 and valid_face_emb is not None:
+                        hidden_states = hidden_states + self.local_face_scale * self.perceiver_cross_attention[ca_idx](valid_face_emb, hidden_states)  # torch.Size([2, 32, 2048])  torch.Size([2, 17550, 3072])                        
+                        ca_idx += 1
                     
             if not self.config.use_rotary_positional_embeddings:
                 # CogVideoX-2B
@@ -754,4 +872,4 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         if not return_dict:
             return (output,)
         return Transformer2DModelOutput(sample=output)
-    
+

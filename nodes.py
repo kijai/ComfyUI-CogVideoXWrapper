@@ -592,6 +592,7 @@ class CogVideoSampler:
                 "controlnet": ("COGVIDECONTROLNET",),
                 "tora_trajectory": ("TORAFEATURES", ),
                 "fastercache": ("FASTERCACHEARGS", ),
+                "consis_id_cond": ("CONSISID_CONDS", {"tooltip": "ConsisID conditioning"} ),
             }
         }
 
@@ -601,7 +602,7 @@ class CogVideoSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, model, positive, negative, steps, cfg, seed, scheduler, num_frames, samples=None,
-                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None):
+                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None, consis_id_cond=None):
         mm.unload_all_models()
         mm.soft_empty_cache()
 
@@ -610,7 +611,8 @@ class CogVideoSampler:
         "I2V" in model_name or 
         "interpolation" in model_name.lower() or 
         "fun" in model_name.lower() or
-        "img2vid" in model_name.lower()
+        "img2vid" in model_name.lower() or
+        "consisid" in model_name.lower()
         ) else False
         if "fun" in model_name.lower() and not ("pose" in model_name.lower() or "control" in model_name.lower()) and image_cond_latents is not None:
             assert image_cond_latents["mask"] is not None, "For fun inpaint models use CogVideoImageEncodeFunInP"
@@ -722,6 +724,7 @@ class CogVideoSampler:
                 tora=tora_trajectory if tora_trajectory is not None else None,
                 image_cond_start_percent=image_cond_start_percent if image_cond_latents is not None else 0.0,
                 image_cond_end_percent=image_cond_end_percent if image_cond_latents is not None else 1.0,
+                consis_id=consis_id_cond,
             )
         if not model["cpu_offloading"] and model["manual_offloading"]:
             pipe.transformer.to(offload_device)
