@@ -301,15 +301,15 @@ class CogVideoConcatLatent:
 
     def encode(self, samples_from, samples_to):
         
-        insert_from = samples_from["samples"]
-        insert_to = samples_to["samples"]
+        insert_from = samples_from["samples"].clone()
+        insert_to = samples_to["samples"].clone()
         new_latents = torch.cat((insert_to, insert_from), dim=1)
-
         print("new latents shape: ", new_latents.shape)
-        
-        
-        samples_to.update({"samples": new_latents})
-        return (samples_to, )
+        return ({
+            "samples": new_latents,
+            "start_percent": samples_from["start_percent"],
+            "end_percent": samples_from["end_percent"]
+            }, )
     
 class CogVideoImageEncodeFunInP:
     @classmethod
