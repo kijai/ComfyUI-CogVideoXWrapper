@@ -218,24 +218,8 @@ class DownloadAndLoadCogVideoModel:
                 local_dir=download_path,
                 local_dir_use_symlinks=False,
             )
-        # transformer_additional_kwargs={}
-        if "consisid" in model.lower():
-            # transformer_additional_kwargs={
-            #     'torch_dtype': dtype,
-            #     'revision': None,
-            #     'variant': None,
-            #     'is_train_face': True,
-            #     'is_kps': False,
-            #     'LFE_num_tokens': 32,
-            #     'LFE_output_dim': 768,
-            #     'LFE_heads': 12,
-            #     'cross_attn_interval': 2, 
-            # }
-            transformer = CogVideoXTransformer3DModel.from_pretrained_cus(base_path, subfolder=subfolder)
-        else:
-            transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder)
         
-        
+        transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder)
         transformer = transformer.to(dtype).to(transformer_load_device)
 
         if "1.5" in model:

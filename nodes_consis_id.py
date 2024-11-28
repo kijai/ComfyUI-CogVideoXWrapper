@@ -66,8 +66,6 @@ class DownloadAndLoadConsisIDModel:
             eva_transform_mean = (eva_transform_mean,) * 3
         if not isinstance(eva_transform_std, (list, tuple)):
             eva_transform_std = (eva_transform_std,) * 3
-        eva_transform_mean = eva_transform_mean
-        eva_transform_std = eva_transform_std
 
         face_main_model = FaceAnalysis(name='antelopev2', root=face_encoder_path, providers=[onnx_device + 'ExecutionProvider',])
         handler_ante = insightface.model_zoo.get_model(f'{face_encoder_path}/models/antelopev2/glintr100.onnx', providers=[onnx_device + 'ExecutionProvider',])
@@ -100,6 +98,7 @@ class ConsisIDFaceEncode:
             "required": {
                 "consis_id_model": ("CONSISIDMODEL",),
                 "image": ("IMAGE",),
+                "face_scale": ("FLOAT", {"default": 1.0,"step": 0.01},),
             },
         }
 
@@ -109,7 +108,7 @@ class ConsisIDFaceEncode:
     CATEGORY = "CogVideoWrapper"
     DESCRIPTION = "Downloads and loads the selected CogVideo model from Huggingface to 'ComfyUI/models/CogVideo'"
 
-    def faceencode(self, image, consis_id_model):
+    def faceencode(self, image, consis_id_model, face_scale):
         from .consis_id.models.utils import process_face_embeddings
 
         device = mm.get_torch_device()
@@ -117,24 +116,29 @@ class ConsisIDFaceEncode:
         
         id_image = image[0].cpu().numpy() * 255
 
-        face_helper = consis_id_model["face_helper"]
-        face_clip_model = consis_id_model["face_clip_model"]
-        handler_ante = consis_id_model["handler_ante"]
-        eva_transform_mean = consis_id_model["eva_transform_mean"]
-        eva_transform_std = consis_id_model["eva_transform_std"]
-        face_main_model = consis_id_model["face_main_model"]
-        id_cond, id_vit_hidden, align_crop_face_image, face_kps = process_face_embeddings(face_helper, face_clip_model, handler_ante, 
-                                                                                eva_transform_mean, eva_transform_std, 
-                                                                                face_main_model, device, dtype, id_image, 
-                                                                                original_id_image=id_image, is_align_face=True, 
-                                                                                cal_uncond=False)
+        id_cond, id_vit_hidden, align_crop_face_image, face_kps = process_face_embeddings(
+            consis_id_model["face_helper"],
+            consis_id_model["face_clip_model"],
+            consis_id_model["handler_ante"],
+            consis_id_model["eva_transform_mean"],
+            consis_id_model["eva_transform_std"],
+            consis_id_model["face_main_model"],
+            device,
+            dtype,
+            id_image,
+            original_id_image=id_image,
+            is_align_face=True,
+            cal_uncond=False
+            )
+        
         consis_id_conds = {
             "id_cond": id_cond,
             "id_vit_hidden": id_vit_hidden,
+            "scale": face_scale,
             #"align_crop_face_image": align_crop_face_image,
             #"face_kps": face_kps
         }
-        print(align_crop_face_image.shape)
+        #print(align_crop_face_image.shape)
         align_crop_face_image = align_crop_face_image.permute(0, 2, 3, 1).float().cpu()
         return consis_id_conds, align_crop_face_image,
     

@@ -677,6 +677,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                                 timestep=timestep,
                                 image_rotary_emb=image_rotary_emb,
                                 video_flow_features=partial_video_flow_features,
+                                consis_id=consis_id,
                                 return_dict=False
                             )[0]
 
