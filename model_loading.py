@@ -637,7 +637,19 @@ class CogVideoXModelLoader:
                 "block_edit": ("TRANSFORMERBLOCKS", {"default": None}),
                 "lora": ("COGLORA", {"default": None}),
                 "compile_args":("COMPILEARGS", ),
-                "attention_mode": (["sdpa", "sageattn", "fused_sdpa", "fused_sageattn"], {"default": "sdpa"}),
+                "attention_mode": ([
+                    "sdpa",
+                    "fused_sdpa",
+                    "sageattn",
+                    "fused_sageattn", 
+                    "sageattn_qk_int8_pv_fp8_cuda",
+                    "sageattn_qk_int8_pv_fp16_cuda",
+                    "sageattn_qk_int8_pv_fp16_triton",
+                    "fused_sageattn_qk_int8_pv_fp8_cuda",
+                    "fused_sageattn_qk_int8_pv_fp16_cuda",
+                    "fused_sageattn_qk_int8_pv_fp16_triton",
+                    "comfy"
+                    ], {"default": "sdpa"}),
             }
         }
 
