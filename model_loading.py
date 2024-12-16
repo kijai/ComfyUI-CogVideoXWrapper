@@ -147,6 +147,7 @@ class DownloadAndLoadCogVideoModel:
                         "alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose",
                         "alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose",
                         "alibaba-pai/CogVideoX-Fun-V1.1-5b-Control",
+                        "alibaba-pai/CogVideoX-Fun-V1.5-5b-InP",
                         "feizhengcong/CogvideoX-Interpolation",
                         "NimVideo/cogvideox-2b-img2vid"
                     ],
@@ -215,7 +216,7 @@ class DownloadAndLoadCogVideoModel:
         download_path = folder_paths.get_folder_paths("CogVideo")[0]
         
         if "Fun" in model:
-            if not "1.1" in model:
+            if not "1.1" and not "1.5" in model:
                 repo_id = "kijai/CogVideoX-Fun-pruned"
                 if "2b" in model:
                     base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-2b-InP") # location of the official model
@@ -225,7 +226,7 @@ class DownloadAndLoadCogVideoModel:
                     base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-5b-InP") # location of the official model
                     if not os.path.exists(base_path):
                         base_path = os.path.join(download_path, "CogVideoX-Fun-5b-InP")
-            elif "1.1" in model:
+            else:
                 repo_id = model
                 base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", (model.split("/")[-1])) # location of the official model
                 if not os.path.exists(base_path):
@@ -278,7 +279,7 @@ class DownloadAndLoadCogVideoModel:
         transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder, attention_mode=attention_mode)
         transformer = transformer.to(dtype).to(transformer_load_device)
 
-        if "1.5" in model:
+        if "1.5" in model and not "fun" in model:
             transformer.config.sample_height = 300
             transformer.config.sample_width = 300
 

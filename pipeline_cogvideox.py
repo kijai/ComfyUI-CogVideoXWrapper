@@ -471,6 +471,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
         # 5.5.
         if image_cond_latents is not None:
+            image_cond_frame_count = image_cond_latents.size(1)
+            patch_size_t = self.transformer.config.patch_size_t
             if image_cond_latents.shape[1] == 2:
                 logger.info("More than one image conditioning frame received, interpolating")
                 padding_shape = (
@@ -482,8 +484,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                 )
                 latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae_dtype)
                 image_cond_latents = torch.cat([image_cond_latents[:, 0, :, :, :].unsqueeze(1), latent_padding, image_cond_latents[:, -1, :, :, :].unsqueeze(1)], dim=1)
-                if self.transformer.config.patch_size_t is not None:
-                    first_frame = image_cond_latents[:, : image_cond_latents.size(1) % self.transformer.config.patch_size_t, ...]
+                if patch_size_t:
+                    first_frame = image_cond_latents[:, : image_cond_frame_count % patch_size_t, ...]
                     image_cond_latents = torch.cat([first_frame, image_cond_latents], dim=1)
 
                 logger.info(f"image cond latents shape: {image_cond_latents.shape}")
@@ -500,13 +502,19 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae_dtype)
                     image_cond_latents = torch.cat([image_cond_latents, latent_padding], dim=1)
                     # Select the first frame along the second dimension
-                    if self.transformer.config.patch_size_t is not None:
-                        first_frame = image_cond_latents[:, : image_cond_latents.size(1) % self.transformer.config.patch_size_t, ...]
+                    if patch_size_t:
+                        first_frame = image_cond_latents[:, : image_cond_frame_count % patch_size_t, ...]
                         image_cond_latents = torch.cat([first_frame, image_cond_latents], dim=1)
                 else:
                     image_cond_latents = image_cond_latents.repeat(1, latents.shape[1], 1, 1, 1)
             else:
                 logger.info(f"Received {image_cond_latents.shape[1]} image conditioning frames")
+                if fun_mask is not None and patch_size_t:
+                    logger.info(f"1.5 model received {fun_mask.shape[1]} masks")
+                    first_frame = image_cond_latents[:, : image_cond_frame_count % patch_size_t, ...]
+                    image_cond_latents = torch.cat([first_frame, image_cond_latents], dim=1)
+                    fun_mask_first_frame = fun_mask[:, : image_cond_frame_count % patch_size_t, ...]
+                    fun_mask = torch.cat([fun_mask_first_frame, fun_mask], dim=1)
             image_cond_latents = image_cond_latents.to(self.vae_dtype)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline

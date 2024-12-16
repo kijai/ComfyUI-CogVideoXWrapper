@@ -360,8 +360,8 @@ class CogVideoImageEncodeFunInP:
         masked_image_latents = masked_image_latents.permute(0, 2, 1, 3, 4)  # B, T, C, H, W
 
         mask = torch.zeros_like(masked_image_latents[:, :, :1, :, :])
-        if end_image is not None:
-            mask[:, -1, :, :, :] = 0
+        #if end_image is not None:
+        #    mask[:, -1, :, :, :] = 0
         mask[:, 0, :, :, :] = vae_scaling_factor
 
         final_latents = masked_image_latents * vae_scaling_factor
@@ -623,7 +623,7 @@ class CogVideoSampler:
             image_conds = image_cond_latents["samples"]
             image_cond_start_percent = image_cond_latents.get("start_percent", 0.0)
             image_cond_end_percent = image_cond_latents.get("end_percent", 1.0)
-            if "1.5" in model_name or "1_5" in model_name:
+            if ("1.5" in model_name or "1_5" in model_name) and not "fun" in model_name.lower():
                 image_conds = image_conds / 0.7 # needed for 1.5 models
         else:
             if not "fun" in model_name.lower():
