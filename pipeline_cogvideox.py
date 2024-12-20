@@ -515,6 +515,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     image_cond_latents = torch.cat([first_frame, image_cond_latents], dim=1)
                     fun_mask_first_frame = fun_mask[:, : image_cond_frame_count % patch_size_t, ...]
                     fun_mask = torch.cat([fun_mask_first_frame, fun_mask], dim=1)
+                    fun_mask[:, 1:, ...] = 0
             image_cond_latents = image_cond_latents.to(self.vae_dtype)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
