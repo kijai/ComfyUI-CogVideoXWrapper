@@ -49,6 +49,25 @@ if not "CogVideo" in folder_paths.folder_names_and_paths:
 if not "cogvideox_loras" in folder_paths.folder_names_and_paths:
     folder_paths.add_model_folder_path("cogvideox_loras", os.path.join(folder_paths.models_dir, "CogVideo", "loras"))
 
+class CogVideoEnhanceAVideo:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "weight": ("FLOAT", {"default": 1.0, "min": 0, "max": 100, "step": 0.01, "tooltip": "The feta Weight of the Enhance-A-Video"}),
+                "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Start percentage of the steps to apply Enhance-A-Video"}),
+                "end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "End percentage of the steps to apply Enhance-A-Video"}),
+            },
+        }
+    RETURN_TYPES = ("FETAARGS",)
+    RETURN_NAMES = ("feta_args",)
+    FUNCTION = "setargs"
+    CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "https://github.com/NUS-HPC-AI-Lab/Enhance-A-Video"
+
+    def setargs(self, **kwargs):
+        return (kwargs, )
+
 class CogVideoContextOptions:
     @classmethod
     def INPUT_TYPES(s):
@@ -592,6 +611,7 @@ class CogVideoSampler:
                 "controlnet": ("COGVIDECONTROLNET",),
                 "tora_trajectory": ("TORAFEATURES", ),
                 "fastercache": ("FASTERCACHEARGS", ),
+                "feta_args": ("FETAARGS", ),
             }
         }
 
@@ -601,7 +621,7 @@ class CogVideoSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, model, positive, negative, steps, cfg, seed, scheduler, num_frames, samples=None,
-                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None):
+                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None, feta_args=None):
         mm.unload_all_models()
         mm.soft_empty_cache()
 
@@ -722,6 +742,7 @@ class CogVideoSampler:
                 tora=tora_trajectory if tora_trajectory is not None else None,
                 image_cond_start_percent=image_cond_start_percent if image_cond_latents is not None else 0.0,
                 image_cond_end_percent=image_cond_end_percent if image_cond_latents is not None else 1.0,
+                feta_args=feta_args,
             )
         if not model["cpu_offloading"] and model["manual_offloading"]:
             pipe.transformer.to(offload_device)
@@ -960,6 +981,7 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoLatentPreview": CogVideoLatentPreview,
     "CogVideoXTorchCompileSettings": CogVideoXTorchCompileSettings,
     "CogVideoImageEncodeFunInP": CogVideoImageEncodeFunInP,
+    "CogVideoEnhanceAVideo": CogVideoEnhanceAVideo,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoSampler": "CogVideo Sampler",
@@ -976,4 +998,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoLatentPreview": "CogVideo LatentPreview",
     "CogVideoXTorchCompileSettings": "CogVideo TorchCompileSettings",
     "CogVideoImageEncodeFunInP": "CogVideo ImageEncode FunInP",
+    "CogVideoEnhanceAVideo": "CogVideo Enhance-A-Video",
     }

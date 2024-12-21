@@ -35,6 +35,9 @@ from diffusers.loaders import PeftAdapterMixin
 from diffusers.models.embeddings import apply_rotary_emb
 from .embeddings import CogVideoXPatchEmbed
 
+from .enhance_a_video.enhance import get_feta_scores
+from .enhance_a_video.globals import is_enhance_enabled, set_num_frames
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -159,6 +162,10 @@ class CogVideoXAttnProcessor2_0:
             query[:, :, text_seq_length:] = apply_rotary_emb(query[:, :, text_seq_length:], image_rotary_emb)
             if not attn.is_cross_attention:
                 key[:, :, text_seq_length:] = apply_rotary_emb(key[:, :, text_seq_length:], image_rotary_emb)
+
+        #feta
+        if is_enhance_enabled():
+            feta_scores = get_feta_scores(attn, query, key, head_dim, text_seq_length)
                 
         hidden_states = self.attn_func(query, key, value, attn_mask=attention_mask, is_causal=False)
        
@@ -173,6 +180,10 @@ class CogVideoXAttnProcessor2_0:
         encoder_hidden_states, hidden_states = hidden_states.split(
             [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
         )
+
+        if is_enhance_enabled():
+            hidden_states *= feta_scores
+
         return hidden_states, encoder_hidden_states
 
 #region Blocks
@@ -543,6 +554,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
+
+        set_num_frames(num_frames)
    
         # 1. Time embedding
         timesteps = timestep
