@@ -822,7 +822,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                                 fun_inpaint_masked_video_latents = torch.cat([fun_masked_video_latents] * 3)
                             else:
                                 fun_inpaint_masked_video_latents = fun_masked_video_latents
-
+                            
+                            fun_inpaint_latents = torch.cat([fun_inpaint_mask, fun_inpaint_masked_video_latents], dim=2).to(latents.dtype)
                             latent_model_input = torch.cat([latent_model_input, fun_inpaint_latents], dim=2)
 
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
