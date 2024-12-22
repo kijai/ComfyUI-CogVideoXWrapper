@@ -216,7 +216,7 @@ class DownloadAndLoadCogVideoModel:
         download_path = folder_paths.get_folder_paths("CogVideo")[0]
         
         if "Fun" in model:
-            if not "1.1" and not "1.5" in model:
+            if "1.1" not in model and "1.5" not in model:
                 repo_id = "kijai/CogVideoX-Fun-pruned"
                 if "2b" in model:
                     base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-2b-InP") # location of the official model
