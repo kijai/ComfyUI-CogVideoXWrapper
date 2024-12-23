@@ -639,7 +639,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
 
-        set_num_frames(num_frames)
+        set_num_frames(num_frames) #enhance a video global
    
         # 1. Time embedding
         timesteps = timestep
