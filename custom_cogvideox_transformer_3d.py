@@ -113,6 +113,8 @@ class CogVideoXAttnProcessor2_0:
             raise ImportError("CogVideoXAttnProcessor requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
         self.attention_mode = attention_mode
         self.attn_func = attn_func
+        self.stg_mode: str = None
+
     def __call__(
         self,
         attn: Attention,
@@ -121,6 +123,16 @@ class CogVideoXAttnProcessor2_0:
         attention_mask: Optional[torch.Tensor] = None,
         image_rotary_emb: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if self.stg_mode == "STG-R":
+            return hidden_states, encoder_hidden_states
+
+        if self.stg_mode == "STG-A":
+            hidden_states_uncond, hidden_states_cond, hidden_states_perturb = hidden_states.chunk(3, dim=0)
+            encoder_hidden_states_uncond, encoder_hidden_states_cond, encoder_hidden_states_perturb = encoder_hidden_states.chunk(3, dim=0)
+
+            hidden_states = torch.cat([hidden_states_uncond, hidden_states_cond], dim=0)
+            encoder_hidden_states = torch.cat([encoder_hidden_states_uncond, encoder_hidden_states_cond], dim=0)
+
         text_seq_length = encoder_hidden_states.size(1)
 
         hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
@@ -166,9 +178,9 @@ class CogVideoXAttnProcessor2_0:
         #feta
         if is_enhance_enabled():
             feta_scores = get_feta_scores(attn, query, key, head_dim, text_seq_length)
-                
+
         hidden_states = self.attn_func(query, key, value, attn_mask=attention_mask, is_causal=False)
-       
+
         if self.attention_mode != "comfy":
             hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
 
@@ -183,6 +195,78 @@ class CogVideoXAttnProcessor2_0:
 
         if is_enhance_enabled():
             hidden_states *= feta_scores
+
+        if self.stg_mode == "STG-A":
+            text_seq_length = encoder_hidden_states_perturb.size(1)
+
+            hidden_states_perturb = torch.cat([encoder_hidden_states_perturb, hidden_states_perturb], dim=1)
+
+            batch_size, sequence_length, _ = (
+                hidden_states_perturb.shape if encoder_hidden_states_perturb is None else encoder_hidden_states_perturb.shape
+            )
+
+            #if attention_mask is not None:
+            #    attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            #    attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+            if attn.to_q.weight.dtype == torch.float16 or attn.to_q.weight.dtype == torch.bfloat16:
+                hidden_states_perturb = hidden_states_perturb.to(attn.to_q.weight.dtype)
+
+            if not "fused" in self.attention_mode:
+                query_perturb = attn.to_q(hidden_states_perturb)
+                key_perturb = attn.to_k(hidden_states_perturb)
+                value_perturb = attn.to_v(hidden_states_perturb)
+            else:
+                qkv = attn.to_qkv(hidden_states_perturb)
+                split_size = qkv.shape[-1] // 3
+                query_perturb, key_perturb, value_perturb = torch.split(qkv, split_size, dim=-1)
+
+            inner_dim = key_perturb.shape[-1]
+            head_dim = inner_dim // attn.heads
+
+            query_perturb = query_perturb.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            key_perturb = key_perturb.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            value_perturb = value_perturb.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+            if attn.norm_q is not None:
+                query_perturb = attn.norm_q(query_perturb)
+            if attn.norm_k is not None:
+                key_perturb = attn.norm_k(key_perturb)
+
+            # Apply RoPE if needed
+            if image_rotary_emb is not None:
+                query_perturb[:, :, text_seq_length:] = apply_rotary_emb(query_perturb[:, :, text_seq_length:], image_rotary_emb)
+                if not attn.is_cross_attention:
+                    key_perturb[:, :, text_seq_length:] = apply_rotary_emb(key_perturb[:, :, text_seq_length:], image_rotary_emb)
+
+            full_seq_length = query_perturb.size(2)
+            identity_block_size = full_seq_length - text_seq_length
+
+            full_mask = torch.zeros((full_seq_length, full_seq_length), device=query_ptb.device, dtype=query_ptb.dtype)
+
+            full_mask[:identity_block_size, :identity_block_size] = float("-inf")
+            full_mask[:identity_block_size, :identity_block_size].fill_diagonal_(0)
+
+            full_mask = full_mask.unsqueeze(0).unsqueeze(0)
+
+            hidden_states_perturb = self.attn_func(
+                query_perturb, key_perturb, value_perturb, attn_mask=full_mask, is_causal=False
+            )
+
+            if self.attention_mode != "comfy":
+                hidden_states_perturb = hidden_states_perturb.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+
+            # linear proj
+            hidden_states_perturb = attn.to_out[0](hidden_states_perturb)
+            # dropout
+            hidden_states_perturb = attn.to_out[1](hidden_states_perturb)
+
+            encoder_hidden_states_perturb, hidden_states_perturb = hidden_states_perturb.split(
+                [text_seq_length, hidden_states.size(1) - text_seq_length], dim=1
+            )
+
+            hidden_states = torch.cat([hidden_states, hidden_states_perturb], dim=0)
+            encoder_hidden_states = torch.cat([encoder_hidden_states, encoder_hidden_states_perturb], dim=0)
 
         return hidden_states, encoder_hidden_states
 
