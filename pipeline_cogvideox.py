@@ -814,7 +814,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
                         if callback is not None:
-                            callback(i, latents.detach()[-1], None, num_inference_steps)
+                            callback(i, (latents - noise_pred * (t / 1000)).detach()[0], None, num_inference_steps)
                         else:
                             comfy_pbar.update(1)
             
