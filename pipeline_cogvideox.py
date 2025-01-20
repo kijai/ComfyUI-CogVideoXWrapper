@@ -111,6 +111,34 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
+class CogVideoXLatentFormat():
+    latent_channels = 16
+    latent_dimensions = 3
+    scale_factor = 0.7
+    taesd_decoder_name = None
+   
+    latent_rgb_factors = [[0.03197404301362048, 0.04091260743347359, 0.0015679806301828524], 
+                          [0.005517101026578029, 0.0052348639043457755, -0.005613441650464035], 
+                          [0.0012485338264583965, -0.016096744206117782, 0.025023940031635054], 
+                          [0.01760126794276171, 0.0036818415416642893, -0.0006019202528157255], 
+                          [0.000444954842288864, 0.006102128982092191, 0.0008457999272962447], 
+                          [-0.010531904354560697, -0.0032275501924977175, -0.00886595780267917], 
+                          [-0.0001454543946122991, 0.010199210750845965, -0.00012702234832386188], 
+                          [0.02078497279904325, -0.001669617778939972, 0.006712703698951264], 
+                          [0.005529571599763264, 0.009733929789086743, 0.001887302765339838], 
+                          [0.012138415094654218, 0.024684961927224837, 0.037211249767461915], 
+                          [0.0010364484570000384, 0.01983636315929172, 0.009864602025627755], 
+                          [0.006802862648143341, -0.0010509255113510681, -0.007026003345126021], 
+                          [0.0003532208468418043, 0.005351971582801936, -0.01845912126717106], 
+                          [-0.009045079994694397, -0.01127941143183089, 0.0042294057970470806], 
+                          [0.002548289972720752, 0.025224244654428216, -0.0006086130121693347], 
+                          [-0.011135669222532816, 0.0018181308593668505, 0.02794541485349922]]
+    latent_rgb_factors_bias = [ -0.023, 0.0, -0.017]
+
+class CogVideoXModelPlaceholder():
+    def __init__(self):
+        self.latent_format = CogVideoXLatentFormat
+
 class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation using CogVideoX.
@@ -598,8 +626,12 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             disable_enhance()
 
         # 11. Denoising loop
-        from .latent_preview import prepare_callback
-        callback = prepare_callback(self.transformer, num_inference_steps)
+        #from .latent_preview import prepare_callback
+        #callback = prepare_callback(self.transformer, num_inference_steps)
+        from latent_preview import prepare_callback
+        self.model = CogVideoXModelPlaceholder()
+        self.load_device = device
+        callback = prepare_callback(self, num_inference_steps)
 
         comfy_pbar = ProgressBar(len(timesteps))
         with self.progress_bar(total=len(timesteps)) as progress_bar:    
@@ -815,8 +847,11 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
-                        if callback is not None:
-                            callback(i, (latents - noise_pred * (t / 1000)).detach()[0], None, num_inference_steps)
+                        if callback is not None: 
+                            alpha_prod_t = self.scheduler.alphas_cumprod[t]
+                            beta_prod_t = 1 - alpha_prod_t
+                            callback_tensor = (alpha_prod_t**0.5) * latent_model_input[0][:, :16, :, :] - (beta_prod_t**0.5) * noise_pred.detach()[0]
+                            callback(i, callback_tensor * 5, None, num_inference_steps)
                         else:
                             comfy_pbar.update(1)
             
