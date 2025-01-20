@@ -692,6 +692,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     self.accumulated_rel_l1_distance += poly1d(self.teacache_coefficients, ((emb-self.previous_modulated_input).abs().mean() / self.previous_modulated_input.abs().mean()))
                     if self.accumulated_rel_l1_distance < self.teacache_rel_l1_thresh:
                         should_calc = False
+                        self.teacache_counter += 1
                     else:
                         should_calc = True
                         self.accumulated_rel_l1_distance = 0

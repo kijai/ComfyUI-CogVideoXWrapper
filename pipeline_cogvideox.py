@@ -625,6 +625,11 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         else:
             disable_enhance()
 
+        # reset TeaCache
+        if hasattr(self.transformer, 'accumulated_rel_l1_distance'):
+            delattr(self.transformer, 'accumulated_rel_l1_distance')
+        self.transformer.teacache_counter = 0
+
         # 11. Denoising loop
         #from .latent_preview import prepare_callback
         #callback = prepare_callback(self.transformer, num_inference_steps)
