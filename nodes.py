@@ -1,4 +1,4 @@
-import os
+import os, re
 import torch
 import json
 from einops import rearrange
@@ -95,6 +95,31 @@ class CogVideoContextOptions:
         }
 
         return (context_options,)
+
+class CogVideoSTG:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "mode": (["STG-A", "STG-R"],),
+                "blocks": ("STRING", {"default": "30", "tooltip": "Block index to apply STG"}),
+                "scale": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "Recommended values are ≤2.0"}),
+                "rescale": ("FLOAT", {"default": 0.7, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "Recommended values are ≤1.0"}),
+            },
+        }
+    RETURN_TYPES = ("STGARGS",)
+    RETURN_NAMES = ("stg_args",)
+    FUNCTION = "setargs"
+    CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "https://github.com/junhahyung/STGuidance"
+
+    def setargs(self, mode, blocks, scale, rescale):
+        return ({
+            "stg_mode": mode,
+            "stg_layers_idx": [int(x) for x in re.findall("\d+", blocks)],
+            "stg_scale": scale,
+            "stg_rescaling": rescale
+        }, )
 
 class CogVideoTransformerEdit:
     @classmethod
@@ -612,6 +637,7 @@ class CogVideoSampler:
                 "tora_trajectory": ("TORAFEATURES", ),
                 "fastercache": ("FASTERCACHEARGS", ),
                 "feta_args": ("FETAARGS", ),
+                "stg_args": ("STGARGS", ),
             }
         }
 
@@ -621,7 +647,8 @@ class CogVideoSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, model, positive, negative, steps, cfg, seed, scheduler, num_frames, samples=None,
-                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None, feta_args=None):
+                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None,
+                tora_trajectory=None, fastercache=None, feta_args=None, stg_args=None):
         mm.unload_all_models()
         mm.soft_empty_cache()
 
@@ -743,6 +770,7 @@ class CogVideoSampler:
                 image_cond_start_percent=image_cond_start_percent if image_cond_latents is not None else 0.0,
                 image_cond_end_percent=image_cond_end_percent if image_cond_latents is not None else 1.0,
                 feta_args=feta_args,
+                **(stg_args if stg_args else {}),
             )
         if not model["cpu_offloading"] and model["manual_offloading"]:
             pipe.transformer.to(offload_device)
@@ -973,6 +1001,7 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoTextEncodeCombine": CogVideoTextEncodeCombine,
     "CogVideoTransformerEdit": CogVideoTransformerEdit,
     "CogVideoContextOptions": CogVideoContextOptions,
+    "CogVideoSTG": CogVideoSTG,
     "CogVideoControlNet": CogVideoControlNet,
     "ToraEncodeTrajectory": ToraEncodeTrajectory,
     "ToraEncodeOpticalFlow": ToraEncodeOpticalFlow,
@@ -991,6 +1020,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoTextEncodeCombine": "CogVideo TextEncode Combine",
     "CogVideoTransformerEdit": "CogVideo TransformerEdit",
     "CogVideoContextOptions": "CogVideo Context Options",
+    "CogVideoSTG": "CogVideo Spatiotemporal Guidance",
     "ToraEncodeTrajectory": "Tora Encode Trajectory",
     "ToraEncodeOpticalFlow": "Tora Encode OpticalFlow",
     "CogVideoXFasterCache": "CogVideoX FasterCache",

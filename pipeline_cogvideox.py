@@ -319,12 +319,21 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         return self._guidance_scale > 1
 
     @property
+    def do_spatiotemporal_guidance(self):
+        return self._stg_scale > 0
+
+    @property
     def num_timesteps(self):
         return self._num_timesteps
 
     @property
     def interrupt(self):
         return self._interrupt
+
+    def extract_attn_layers(self):
+        for key, mod in self.transformer.named_modules():
+            if "attn1" in key and "to" not in key and "add" not in key and "norm" not in key:
+                yield mod
 
     @torch.no_grad()
     def __call__(
@@ -355,6 +364,10 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         image_cond_start_percent: float = 0.0,
         image_cond_end_percent: float = 1.0,
         feta_args: Optional[dict] = None,
+        stg_mode: Optional[str] = None, # "STG-A",
+        stg_layers_idx: Optional[List[int]] = [], # [30],
+        stg_scale: Optional[float] = 0.0, # 4.0
+        stg_rescaling: Optional[float] = None, # 0.7
         
     ):
         """
@@ -411,8 +424,12 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
             prompt_embeds,
             negative_prompt_embeds,
         )
+        self._stg_scale = stg_scale
         self._guidance_scale = guidance_scale
         self._interrupt = False
+
+        for idx, mod in enumerate(self.extract_attn_layers()):
+            mod.stg_mode = stg_mode if idx in stg_layers_idx else None
 
         # 2. Default call parameters
        
@@ -423,8 +440,11 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale[0] > 1.0
 
-        if do_classifier_free_guidance:
+        if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+        elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds, prompt_embeds], dim=0)
+
         prompt_embeds = prompt_embeds.to(self.vae_dtype)
 
         # 4. Prepare timesteps
@@ -617,13 +637,25 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                         disable_enhance()
                 # region context schedule sampling
                 if use_context_schedule:
-                    latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                    if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
+                        latent_model_input = torch.cat([latents] * 2)
+                    elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+                        latent_model_input = torch.cat([latents] * 3)
+                    else:
+                        latent_model_input = latents
+
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
                     counter = torch.zeros_like(latent_model_input)
                     noise_pred = torch.zeros_like(latent_model_input)
                     
                     if image_cond_latents is not None:
-                        latent_image_input = torch.cat([image_cond_latents] * 2) if do_classifier_free_guidance else image_cond_latents
+                        if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
+                            latent_image_input = torch.cat([image_cond_latents] * 2)
+                        elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+                            latent_image_input = torch.cat([image_cond_latents] * 3)
+                        else:
+                            latent_image_input = image_cond_latents
+
                         latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
 
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
@@ -710,9 +742,19 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                             noise_pred = noise_pred.float()
                         
                     noise_pred /= counter
-                    if do_classifier_free_guidance:
+                    if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + self._guidance_scale[i] * (noise_pred_text - noise_pred_uncond)
+
+                    elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+                        noise_pred_uncond, noise_pred_text, noise_pred_perturb = noise_pred.chunk(3)
+                        noise_pred = noise_pred_uncond + self._guidance_scale[i] * (noise_pred_text - noise_pred_uncond) \
+                            + self._stg_scale * (noise_pred_text - noise_pred_perturb)
+
+                    if stg_rescaling:
+                        factor = noise_pred_text.std() / noise_pred.std()
+                        factor = stg_rescaling * factor + (1 - stg_rescaling)
+                        noise_pred = noise_pred * factor
                        
                     # compute the previous noisy sample x_t -> x_t-1
                     if not isinstance(self.scheduler, CogVideoXDPMScheduler):
@@ -735,24 +777,54 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
 
                 # region sampling
                 else:
-                    latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                    if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
+                        latent_model_input = torch.cat([latents] * 2)
+                    elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+                        latent_model_input = torch.cat([latents] * 3)
+                    else:
+                        latent_model_input = latents
+
                     latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                     if image_cond_latents is not None:
                         if not image_cond_start_percent <= current_step_percentage <= image_cond_end_percent:
                             latent_image_input = torch.zeros_like(latent_model_input)
                         else:
-                            latent_image_input = torch.cat([image_cond_latents] * 2) if do_classifier_free_guidance else image_cond_latents
+                            if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
+                                latent_image_input = torch.cat([image_cond_latents] * 2)
+                            elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+                                latent_image_input = torch.cat([image_cond_latents] * 3)
+                            else:
+                                latent_image_input = image_cond_latents
+
                         if fun_mask is not None: #for fun img2vid and interpolation
-                            fun_inpaint_mask = torch.cat([fun_mask] * 2) if do_classifier_free_guidance else fun_mask
+                            if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
+                                fun_inpaint_mask = torch.cat([fun_mask] * 2)
+                            elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+                                fun_inpaint_mask = torch.cat([fun_mask] * 3)
+                            else:
+                                fun_inpaint_mask = fun_mask
+
                             masks_input = torch.cat([fun_inpaint_mask, latent_image_input], dim=2)
                             latent_model_input = torch.cat([latent_model_input, masks_input], dim=2)
                         else:
                             latent_model_input = torch.cat([latent_model_input, latent_image_input], dim=2)
                     else: # for Fun inpaint vid2vid
                         if fun_mask is not None:
-                            fun_inpaint_mask = torch.cat([fun_mask] * 2) if do_classifier_free_guidance else fun_mask
-                            fun_inpaint_masked_video_latents = torch.cat([fun_masked_video_latents] * 2) if do_classifier_free_guidance else fun_masked_video_latents
+                            if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
+                                fun_inpaint_mask = torch.cat([fun_mask] * 2)
+                            elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+                                fun_inpaint_mask = torch.cat([fun_mask] * 3)
+                            else:
+                                fun_inpaint_mask = fun_mask
+
+                            if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
+                                fun_inpaint_masked_video_latents = torch.cat([fun_masked_video_latents] * 2)
+                            elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+                                fun_inpaint_masked_video_latents = torch.cat([fun_masked_video_latents] * 3)
+                            else:
+                                fun_inpaint_masked_video_latents = fun_masked_video_latents
+                            
                             fun_inpaint_latents = torch.cat([fun_inpaint_mask, fun_inpaint_masked_video_latents], dim=2).to(latents.dtype)
                             latent_model_input = torch.cat([latent_model_input, fun_inpaint_latents], dim=2)
 
@@ -793,10 +865,20 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                         self._guidance_scale[i] = 1 + guidance_scale[i] * (
                             (1 - math.cos(math.pi * ((num_inference_steps - t.item()) / num_inference_steps) ** 5.0)) / 2
                         )
-                    
-                    if do_classifier_free_guidance:
+
+                    if do_classifier_free_guidance and not self.do_spatiotemporal_guidance:
                         noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                         noise_pred = noise_pred_uncond + self._guidance_scale[i] * (noise_pred_text - noise_pred_uncond)
+
+                    elif do_classifier_free_guidance and self.do_spatiotemporal_guidance:
+                        noise_pred_uncond, noise_pred_text, noise_pred_perturb = noise_pred.chunk(3)
+                        noise_pred = noise_pred_uncond + self._guidance_scale[i] * (noise_pred_text - noise_pred_uncond) \
+                            + self._stg_scale * (noise_pred_text - noise_pred_perturb)
+
+                    if stg_rescaling:
+                        factor = noise_pred_text.std() / noise_pred.std()
+                        factor = stg_rescaling * factor + (1 - stg_rescaling)
+                        noise_pred = noise_pred * factor
 
                     # compute the previous noisy sample x_t -> x_t-1
                     if not isinstance(self.scheduler, CogVideoXDPMScheduler):
