@@ -584,6 +584,26 @@ class CogVideoXFasterCache:
             "num_blocks_to_cache" : num_blocks_to_cache,
         }
         return (fastercache,)
+    
+class CogVideoXTeaCache:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "rel_l1_thresh": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "Cache threshold, higher values are faster while sacrificing quality"}),
+            }
+        }
+    
+    RETURN_TYPES = ("TEACACHEARGS",)
+    RETURN_NAMES = ("teacache_args",)
+    FUNCTION = "args"
+    CATEGORY = "CogVideoWrapper"
+    
+    def args(self, rel_l1_thresh):
+        teacache = {
+            "rel_l1_thresh": rel_l1_thresh
+        }
+        return (teacache,)
 
 #region Sampler    
 class CogVideoSampler:
@@ -612,6 +632,7 @@ class CogVideoSampler:
                 "tora_trajectory": ("TORAFEATURES", ),
                 "fastercache": ("FASTERCACHEARGS", ),
                 "feta_args": ("FETAARGS", ),
+                "teacache_args": ("TEACACHEARGS", ),
             }
         }
 
@@ -621,7 +642,7 @@ class CogVideoSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, model, positive, negative, steps, cfg, seed, scheduler, num_frames, samples=None,
-                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None, feta_args=None):
+                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None, feta_args=None, teacache_args=None):
         mm.unload_all_models()
         mm.soft_empty_cache()
 
@@ -705,6 +726,13 @@ class CogVideoSampler:
         else:
             pipe.transformer.use_fastercache = False
             pipe.transformer.fastercache_counter = 0
+
+        if teacache_args is not None:
+            pipe.transformer.use_teacache = True
+            pipe.transformer.teacache_rel_l1_thresh = teacache_args["rel_l1_thresh"]
+            log.info(f"TeaCache enabled with rel_l1_thresh: {pipe.transformer.teacache_rel_l1_thresh}")
+        else:
+            pipe.transformer.use_teacache = False
 
         if not isinstance(cfg, list):
             cfg = [cfg for _ in range(steps)]
@@ -982,6 +1010,7 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoXTorchCompileSettings": CogVideoXTorchCompileSettings,
     "CogVideoImageEncodeFunInP": CogVideoImageEncodeFunInP,
     "CogVideoEnhanceAVideo": CogVideoEnhanceAVideo,
+    "CogVideoXTeaCache": CogVideoXTeaCache,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoSampler": "CogVideo Sampler",
@@ -999,4 +1028,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoXTorchCompileSettings": "CogVideo TorchCompileSettings",
     "CogVideoImageEncodeFunInP": "CogVideo ImageEncode FunInP",
     "CogVideoEnhanceAVideo": "CogVideo Enhance-A-Video",
+    "CogVideoXTeaCache": "CogVideoX TeaCache",
     }
