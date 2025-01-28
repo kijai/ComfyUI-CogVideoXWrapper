@@ -2,6 +2,19 @@
 
 Spreadsheet (WIP) of supported models and their supported features: https://docs.google.com/spreadsheets/d/16eA6mSL8XkTcu9fSWkPSHfRIqyAKJbR1O99xnuGdCKY/edit?usp=sharing
 
+## Update 9
+Added preliminary support for [Go-with-the-Flow](https://github.com/VGenAI-Netflix-Eyeline-Research/Go-with-the-Flow)
+
+This uses LoRA weights available here: https://huggingface.co/Eyeline-Research/Go-with-the-Flow/tree/main
+
+To create the input videos for the NoiseWarp process, I've added a node to KJNodes that works alongside my SplineEditor, and either [comfyui-inpaint-nodes](https://github.com/Acly/comfyui-inpaint-nodes) or just cv2 inpainting to create the cut and drag input videos.
+
+The workflows are in the example_workflows -folder.
+
+Quick video to showcase: First mask the subject, then use the cut and drag -workflow to create a video as seen here, then that video is used as input to the NoiseWarp node in the main workflow.
+
+https://github.com/user-attachments/assets/112706b0-a38b-4c3c-b779-deba0827af4f
+
 ## BREAKING Update8
 
 This is big one, and unfortunately to do the necessary cleanup and refactoring this will break every old workflow as they are.

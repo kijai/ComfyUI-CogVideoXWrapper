@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-cogvideoxwrapper"
-description = "Diffusers wrapper for CogVideoX -models: [a/https://github.com/THUDM/CogVideo](https://github.com/THUDM/CogVideo)"
-version = "1.5.0"
+description = "Diffusers wrapper for CogVideoX -models: https://github.com/THUDM/CogVideo"
+version = "1.5.1"
 license = {file = "LICENSE"}
 dependencies = ["huggingface_hub", "diffusers>=0.31.0", "accelerate>=0.33.0"]
 

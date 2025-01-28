@@ -70,12 +70,50 @@ class CogVideoLoraSelect:
     RETURN_NAMES = ("lora", )
     FUNCTION = "getlorapath"
     CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "Select a LoRA model from ComfyUI/models/CogVideo/loras"
 
     def getlorapath(self, lora, strength, prev_lora=None, fuse_lora=False):
         cog_loras_list = []
 
         cog_lora = {
             "path": folder_paths.get_full_path("cogvideox_loras", lora),
+            "strength": strength,
+            "name": lora.split(".")[0],
+            "fuse_lora": fuse_lora
+        }
+        if prev_lora is not None:
+            cog_loras_list.extend(prev_lora)
+            
+        cog_loras_list.append(cog_lora)
+        print(cog_loras_list)
+        return (cog_loras_list,)
+
+class CogVideoLoraSelectComfy:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+               "lora": (folder_paths.get_filename_list("loras"), 
+                {"tooltip": "LORA models are expected to be in ComfyUI/models/loras with .safetensors extension"}),
+                "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.0001, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
+            },
+            "optional": {
+                "prev_lora":("COGLORA", {"default": None, "tooltip": "For loading multiple LoRAs"}),
+                "fuse_lora": ("BOOLEAN", {"default": False, "tooltip": "Fuse the LoRA weights into the transformer"}),
+            }
+        }
+
+    RETURN_TYPES = ("COGLORA",)
+    RETURN_NAMES = ("lora", )
+    FUNCTION = "getlorapath"
+    CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "Select a LoRA model from ComfyUI/models/loras"
+
+    def getlorapath(self, lora, strength, prev_lora=None, fuse_lora=False):
+        cog_loras_list = []
+
+        cog_lora = {
+            "path": folder_paths.get_full_path("loras", lora),
             "strength": strength,
             "name": lora.split(".")[0],
             "fuse_lora": fuse_lora
@@ -109,6 +147,7 @@ class DownloadAndLoadCogVideoModel:
                         "alibaba-pai/CogVideoX-Fun-V1.1-2b-Pose",
                         "alibaba-pai/CogVideoX-Fun-V1.1-5b-Pose",
                         "alibaba-pai/CogVideoX-Fun-V1.1-5b-Control",
+                        "alibaba-pai/CogVideoX-Fun-V1.5-5b-InP",
                         "feizhengcong/CogvideoX-Interpolation",
                         "NimVideo/cogvideox-2b-img2vid"
                     ],
@@ -177,7 +216,7 @@ class DownloadAndLoadCogVideoModel:
         download_path = folder_paths.get_folder_paths("CogVideo")[0]
         
         if "Fun" in model:
-            if not "1.1" in model:
+            if "1.1" not in model and "1.5" not in model:
                 repo_id = "kijai/CogVideoX-Fun-pruned"
                 if "2b" in model:
                     base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-2b-InP") # location of the official model
@@ -187,7 +226,7 @@ class DownloadAndLoadCogVideoModel:
                     base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", "CogVideoX-Fun-5b-InP") # location of the official model
                     if not os.path.exists(base_path):
                         base_path = os.path.join(download_path, "CogVideoX-Fun-5b-InP")
-            elif "1.1" in model:
+            else:
                 repo_id = model
                 base_path = os.path.join(folder_paths.models_dir, "CogVideoX_Fun", (model.split("/")[-1])) # location of the official model
                 if not os.path.exists(base_path):
@@ -240,7 +279,7 @@ class DownloadAndLoadCogVideoModel:
         transformer = CogVideoXTransformer3DModel.from_pretrained(base_path, subfolder=subfolder, attention_mode=attention_mode)
         transformer = transformer.to(dtype).to(transformer_load_device)
 
-        if "1.5" in model:
+        if "1.5" in model and not "fun" in model:
             transformer.config.sample_height = 300
             transformer.config.sample_width = 300
 
@@ -295,6 +334,8 @@ class DownloadAndLoadCogVideoModel:
                         pipe.transformer = merge_lora(pipe.transformer, l["path"], l["strength"], device=transformer_load_device, state_dict=lora_sd)
                     except:
                         raise ValueError(f"Can't recognize LoRA {l['path']}")
+                del lora_sd
+                mm.soft_empty_cache()
             if adapter_list:
                 pipe.set_adapters(adapter_list, adapter_weights=adapter_weights)
                 if fuse:
@@ -302,6 +343,7 @@ class DownloadAndLoadCogVideoModel:
                     if dimensionx_lora:
                         lora_scale = lora_scale / lora_rank
                     pipe.fuse_lora(lora_scale=lora_scale, components=["transformer"])
+                    pipe.delete_adapters(adapter_list)
            
 
         if "fused" in attention_mode:
@@ -660,7 +702,7 @@ class CogVideoXModelLoader:
 
     def loadmodel(self, model, base_precision, load_device, enable_sequential_cpu_offload, 
                   block_edit=None, compile_args=None, lora=None, attention_mode="sdpa", quantization="disabled"):
-        
+        transformer = None
         if "sage" in attention_mode:
             try:
                 from sageattention import sageattn
@@ -689,6 +731,8 @@ class CogVideoXModelLoader:
             model_type = "5b_I2V_1_5"
         elif sd["patch_embed.proj.weight"].shape == (1920, 33, 2, 2):
             model_type = "fun_2b"
+        elif sd["patch_embed.proj.weight"].shape == (1920, 32, 2, 2):
+            model_type = "cogvideox-2b-img2vid"
         elif sd["patch_embed.proj.weight"].shape == (1920, 16, 2, 2):
             model_type = "2b"
         elif sd["patch_embed.proj.weight"].shape == (3072, 32, 2, 2):
@@ -710,7 +754,7 @@ class CogVideoXModelLoader:
         with open(transformer_config_path) as f:
             transformer_config = json.load(f)
 
-            if model_type in ["I2V", "I2V_5b", "fun_5b_pose", "5b_I2V_1_5"]:
+            if model_type in ["I2V", "I2V_5b", "fun_5b_pose", "5b_I2V_1_5", "cogvideox-2b-img2vid"]:
                 transformer_config["in_channels"] = 32
                 if "1_5" in model_type:
                     transformer_config["ofs_embed_dim"] = 512
@@ -736,6 +780,10 @@ class CogVideoXModelLoader:
             #dtype_to_use = base_dtype if any(keyword in name for keyword in params_to_keep) else dtype
             set_module_tensor_to_device(transformer, name, device=transformer_load_device, dtype=base_dtype, value=sd[name])
         del sd
+        # TODO fix for transformer model patch_embed.pos_embedding dtype 
+        #   or at add line  ComfyUI-CogVideoXWrapper/embeddings.py:129 code
+        #   pos_embedding = pos_embedding.to(embeds.device, dtype=embeds.dtype)
+        transformer = transformer.to(base_dtype).to(transformer_load_device)
 
         #scheduler
         with open(scheduler_config_path) as f:
@@ -759,7 +807,8 @@ class CogVideoXModelLoader:
             dtype=base_dtype, 
             is_fun_inpaint="fun" in model.lower() and not ("pose" in model.lower() or "control" in model.lower())
             )
-
+        if "cogvideox-2b-img2vid" == model_type:
+            pipe.input_with_padding = False
         if enable_sequential_cpu_offload:
             pipe.enable_sequential_cpu_offload()
 
@@ -925,6 +974,7 @@ class DownloadAndLoadToraModel:
                 "model": (
                     [
                         "kijai/CogVideoX-5b-Tora",
+                        "kijai/CogVideoX-5b-Tora-I2V",
                     ],
                 ),
             },
@@ -954,14 +1004,17 @@ class DownloadAndLoadToraModel:
             pass
 
         download_path = os.path.join(folder_paths.models_dir, 'CogVideo', "CogVideoX-5b-Tora")
-        fuser_path = os.path.join(download_path, "fuser", "fuser.safetensors")
+
+        
+        fuser_model = "fuser.safetensors" if not "I2V" in model else "fuser_I2V.safetensors"
+        fuser_path = os.path.join(download_path, "fuser", fuser_model)
         if not os.path.exists(fuser_path):
             log.info(f"Downloading Fuser model to: {fuser_path}")
             from huggingface_hub import snapshot_download
 
             snapshot_download(
                 repo_id=model,
-                allow_patterns=["*fuser.safetensors*"],
+                allow_patterns=[fuser_model],
                 local_dir=download_path,
                 local_dir_use_symlinks=False,
             )
@@ -983,14 +1036,15 @@ class DownloadAndLoadToraModel:
                     param.data = param.data.to(torch.bfloat16).to(device)
         del fuser_sd
 
-        traj_extractor_path = os.path.join(download_path, "traj_extractor", "traj_extractor.safetensors")
+        traj_extractor_model = "traj_extractor.safetensors" if not "I2V" in model else "traj_extractor_I2V.safetensors"
+        traj_extractor_path = os.path.join(download_path, "traj_extractor", traj_extractor_model)
         if not os.path.exists(traj_extractor_path):
             log.info(f"Downloading trajectory extractor model to: {traj_extractor_path}")
             from huggingface_hub import snapshot_download
 
             snapshot_download(
                 repo_id="kijai/CogVideoX-5b-Tora",
-                allow_patterns=["*traj_extractor.safetensors*"],
+                allow_patterns=[traj_extractor_model],
                 local_dir=download_path,
                 local_dir_use_symlinks=False,
             )
@@ -1078,6 +1132,7 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoLoraSelect": CogVideoLoraSelect,
     "CogVideoXVAELoader": CogVideoXVAELoader,
     "CogVideoXModelLoader": CogVideoXModelLoader,
+    "CogVideoLoraSelectComfy": CogVideoLoraSelectComfy
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -1087,4 +1142,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoLoraSelect": "CogVideo LoraSelect",
     "CogVideoXVAELoader": "CogVideoX VAE Loader",
     "CogVideoXModelLoader": "CogVideoX Model Loader",
+    "CogVideoLoraSelectComfy": "CogVideo LoraSelect Comfy"
     }

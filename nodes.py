@@ -49,6 +49,25 @@ if not "CogVideo" in folder_paths.folder_names_and_paths:
 if not "cogvideox_loras" in folder_paths.folder_names_and_paths:
     folder_paths.add_model_folder_path("cogvideox_loras", os.path.join(folder_paths.models_dir, "CogVideo", "loras"))
 
+class CogVideoEnhanceAVideo:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "weight": ("FLOAT", {"default": 1.0, "min": 0, "max": 100, "step": 0.01, "tooltip": "The feta Weight of the Enhance-A-Video"}),
+                "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "Start percentage of the steps to apply Enhance-A-Video"}),
+                "end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "End percentage of the steps to apply Enhance-A-Video"}),
+            },
+        }
+    RETURN_TYPES = ("FETAARGS",)
+    RETURN_NAMES = ("feta_args",)
+    FUNCTION = "setargs"
+    CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "https://github.com/NUS-HPC-AI-Lab/Enhance-A-Video"
+
+    def setargs(self, **kwargs):
+        return (kwargs, )
+
 class CogVideoContextOptions:
     @classmethod
     def INPUT_TYPES(s):
@@ -263,13 +282,14 @@ class CogVideoImageEncode:
         start_latents = vae.encode(start_image).latent_dist.sample(generator)
         start_latents = start_latents.permute(0, 2, 1, 3, 4)  # B, T, C, H, W
         
+
         if end_image is not None:
             end_image = (end_image * 2.0 - 1.0).to(vae.dtype).to(device).unsqueeze(0).permute(0, 4, 1, 2, 3)
             if noise_aug_strength > 0:
                 end_image = add_noise_to_reference_video(end_image, ratio=noise_aug_strength)
             end_latents = vae.encode(end_image).latent_dist.sample(generator)
             end_latents = end_latents.permute(0, 2, 1, 3, 4)  # B, T, C, H, W
-            latents_list.append(end_latents)
+            latents_list = [start_latents, end_latents]
             final_latents = torch.cat(latents_list, dim=1)
         else:
             final_latents = start_latents
@@ -283,32 +303,6 @@ class CogVideoImageEncode:
             "samples": final_latents,
             "start_percent": start_percent,
             "end_percent": end_percent
-            }, )
-
-class CogVideoConcatLatent:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {"required": {
-            "samples_to": ("LATENT", ),
-            "samples_from": ("LATENT",),
-            },
-        }
-
-    RETURN_TYPES = ("LATENT",)
-    RETURN_NAMES = ("samples",)
-    FUNCTION = "encode"
-    CATEGORY = "CogVideoWrapper"
-
-    def encode(self, samples_from, samples_to):
-        
-        insert_from = samples_from["samples"].clone()
-        insert_to = samples_to["samples"].clone()
-        new_latents = torch.cat((insert_to, insert_from), dim=1)
-        print("new latents shape: ", new_latents.shape)
-        return ({
-            "samples": new_latents,
-            "start_percent": samples_from["start_percent"],
-            "end_percent": samples_from["end_percent"]
             }, )
     
 class CogVideoImageEncodeFunInP:
@@ -385,8 +379,8 @@ class CogVideoImageEncodeFunInP:
         masked_image_latents = masked_image_latents.permute(0, 2, 1, 3, 4)  # B, T, C, H, W
 
         mask = torch.zeros_like(masked_image_latents[:, :, :1, :, :])
-        if end_image is not None:
-            mask[:, -1, :, :, :] = 0
+        #if end_image is not None:
+        #    mask[:, -1, :, :, :] = 0
         mask[:, 0, :, :, :] = vae_scaling_factor
 
         final_latents = masked_image_latents * vae_scaling_factor
@@ -590,6 +584,26 @@ class CogVideoXFasterCache:
             "num_blocks_to_cache" : num_blocks_to_cache,
         }
         return (fastercache,)
+    
+class CogVideoXTeaCache:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "rel_l1_thresh": ("FLOAT", {"default": 0.3, "min": 0.0, "max": 10.0, "step": 0.01, "tooltip": "Cache threshold, higher values are faster while sacrificing quality"}),
+            }
+        }
+    
+    RETURN_TYPES = ("TEACACHEARGS",)
+    RETURN_NAMES = ("teacache_args",)
+    FUNCTION = "args"
+    CATEGORY = "CogVideoWrapper"
+    
+    def args(self, rel_l1_thresh):
+        teacache = {
+            "rel_l1_thresh": rel_l1_thresh
+        }
+        return (teacache,)
 
 #region Sampler    
 class CogVideoSampler:
@@ -617,6 +631,8 @@ class CogVideoSampler:
                 "controlnet": ("COGVIDECONTROLNET",),
                 "tora_trajectory": ("TORAFEATURES", ),
                 "fastercache": ("FASTERCACHEARGS", ),
+                "feta_args": ("FETAARGS", ),
+                "teacache_args": ("TEACACHEARGS", ),
             }
         }
 
@@ -626,7 +642,7 @@ class CogVideoSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, model, positive, negative, steps, cfg, seed, scheduler, num_frames, samples=None,
-                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None):
+                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None, feta_args=None, teacache_args=None):
         mm.unload_all_models()
         mm.soft_empty_cache()
 
@@ -648,7 +664,7 @@ class CogVideoSampler:
             image_conds = image_cond_latents["samples"]
             image_cond_start_percent = image_cond_latents.get("start_percent", 0.0)
             image_cond_end_percent = image_cond_latents.get("end_percent", 1.0)
-            if "1.5" in model_name or "1_5" in model_name:
+            if ("1.5" in model_name or "1_5" in model_name) and not "fun" in model_name.lower():
                 image_conds = image_conds / 0.7 # needed for 1.5 models
         else:
             if not "fun" in model_name.lower():
@@ -711,6 +727,13 @@ class CogVideoSampler:
             pipe.transformer.use_fastercache = False
             pipe.transformer.fastercache_counter = 0
 
+        if teacache_args is not None:
+            pipe.transformer.use_teacache = True
+            pipe.transformer.teacache_rel_l1_thresh = teacache_args["rel_l1_thresh"]
+            log.info(f"TeaCache enabled with rel_l1_thresh: {pipe.transformer.teacache_rel_l1_thresh}")
+        else:
+            pipe.transformer.use_teacache = False
+
         if not isinstance(cfg, list):
             cfg = [cfg for _ in range(steps)]
         else:
@@ -747,6 +770,7 @@ class CogVideoSampler:
                 tora=tora_trajectory if tora_trajectory is not None else None,
                 image_cond_start_percent=image_cond_start_percent if image_cond_latents is not None else 0.0,
                 image_cond_end_percent=image_cond_end_percent if image_cond_latents is not None else 1.0,
+                feta_args=feta_args,
             )
         if not model["cpu_offloading"] and model["manual_offloading"]:
             pipe.transformer.to(offload_device)
@@ -758,6 +782,9 @@ class CogVideoSampler:
                     block.cached_encoder_hidden_states = None
 
         print_memory(device)
+
+        if teacache_args is not None:
+            log.info(f"TeaCache skipped steps: {pipe.transformer.teacache_counter}")
         mm.soft_empty_cache()
         try:
             torch.cuda.reset_peak_memory_stats(device)
@@ -936,7 +963,8 @@ class CogVideoLatentPreview:
         latents = latents.permute(0, 2, 1, 3, 4)  # [batch_size, num_channels, num_frames, height, width]
  
         #[[0.0658900170023352, 0.04687556512203313, -0.056971557475649186], [-0.01265770449940036, -0.02814809569100843, -0.0768912512529372], [0.061456544746314665, 0.0005511617552452358, -0.0652574975291287], [-0.09020669168815276, -0.004755440180558637, -0.023763970904494294], [0.031766964513999865, -0.030959599938418375, 0.08654669098083616], [-0.005981764690055846, -0.08809119252349802, -0.06439852368217663], [-0.0212114426433989, 0.08894281999597677, 0.05155629477559985], [-0.013947446911030725, -0.08987475069900677, -0.08923124751217484], [-0.08235967967978511, 0.07268025379974379, 0.08830486164536037], [-0.08052049179735378, -0.050116143175332195, 0.02023752569687405], [-0.07607527759162447, 0.06827156419895981, 0.08678111754261035], [-0.04689089232553825, 0.017294986041038893, -0.10280492336438908], [-0.06105783150270304, 0.07311850680875913, 0.019995735372550075], [-0.09232589996527711, -0.012869815059053047, -0.04355587834255975], [-0.06679931010802251, 0.018399815879067458, 0.06802404982033876], [-0.013062632927118165, -0.04292991477896661, 0.07476243356192845]]
-        latent_rgb_factors =[[0.11945946736445662, 0.09919175788574555, -0.004832707433877734], [-0.0011977028264356232, 0.05496505130267682, 0.021321622433638193], [-0.014088548986590666, -0.008701477861945644, -0.020991313281459367], [0.03063921972519621, 0.12186477097625073, 0.0139593690235148], [0.0927403067854673, 0.030293187650929136, 0.05083134241694003], [0.0379112441305742, 0.04935199882777209, 0.058562766246777774], [0.017749911959153715, 0.008839453404921545, 0.036005638019226294], [0.10610119248526109, 0.02339855688237826, 0.057154257614084596], [0.1273639464837117, -0.010959856130713416, 0.043268631260428896], [-0.01873510946881321, 0.08220930648486932, 0.10613256772247093], [0.008429116376722327, 0.07623856561000408, 0.09295712117576727], [0.12938137079617007, 0.12360403483892413, 0.04478930933220116], [0.04565908794779364, 0.041064156741596365, -0.017695041535528512], [0.00019003240570281826, -0.013965147883381978, 0.05329669529635849], [0.08082391586738358, 0.11548306825496074, -0.021464170006615893], [-0.01517932393230994, -0.0057985555313003236, 0.07216646476618871]]
+        #latent_rgb_factors =[[0.11945946736445662, 0.09919175788574555, -0.004832707433877734], [-0.0011977028264356232, 0.05496505130267682, 0.021321622433638193], [-0.014088548986590666, -0.008701477861945644, -0.020991313281459367], [0.03063921972519621, 0.12186477097625073, 0.0139593690235148], [0.0927403067854673, 0.030293187650929136, 0.05083134241694003], [0.0379112441305742, 0.04935199882777209, 0.058562766246777774], [0.017749911959153715, 0.008839453404921545, 0.036005638019226294], [0.10610119248526109, 0.02339855688237826, 0.057154257614084596], [0.1273639464837117, -0.010959856130713416, 0.043268631260428896], [-0.01873510946881321, 0.08220930648486932, 0.10613256772247093], [0.008429116376722327, 0.07623856561000408, 0.09295712117576727], [0.12938137079617007, 0.12360403483892413, 0.04478930933220116], [0.04565908794779364, 0.041064156741596365, -0.017695041535528512], [0.00019003240570281826, -0.013965147883381978, 0.05329669529635849], [0.08082391586738358, 0.11548306825496074, -0.021464170006615893], [-0.01517932393230994, -0.0057985555313003236, 0.07216646476618871]]
+        latent_rgb_factors = [[0.03197404301362048, 0.04091260743347359, 0.0015679806301828524], [0.005517101026578029, 0.0052348639043457755, -0.005613441650464035], [0.0012485338264583965, -0.016096744206117782, 0.025023940031635054], [0.01760126794276171, 0.0036818415416642893, -0.0006019202528157255], [0.000444954842288864, 0.006102128982092191, 0.0008457999272962447], [-0.010531904354560697, -0.0032275501924977175, -0.00886595780267917], [-0.0001454543946122991, 0.010199210750845965, -0.00012702234832386188], [0.02078497279904325, -0.001669617778939972, 0.006712703698951264], [0.005529571599763264, 0.009733929789086743, 0.001887302765339838], [0.012138415094654218, 0.024684961927224837, 0.037211249767461915], [0.0010364484570000384, 0.01983636315929172, 0.009864602025627755], [0.006802862648143341, -0.0010509255113510681, -0.007026003345126021], [0.0003532208468418043, 0.005351971582801936, -0.01845912126717106], [-0.009045079994694397, -0.01127941143183089, 0.0042294057970470806], [0.002548289972720752, 0.025224244654428216, -0.0006086130121693347], [-0.011135669222532816, 0.0018181308593668505, 0.02794541485349922]]
         import random
         random.seed(seed)
         latent_rgb_factors = [[random.uniform(min_val, max_val) for _ in range(3)] for _ in range(16)]
@@ -985,7 +1013,8 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoLatentPreview": CogVideoLatentPreview,
     "CogVideoXTorchCompileSettings": CogVideoXTorchCompileSettings,
     "CogVideoImageEncodeFunInP": CogVideoImageEncodeFunInP,
-    "CogVideoConcatLatent": CogVideoConcatLatent,
+    "CogVideoEnhanceAVideo": CogVideoEnhanceAVideo,
+    "CogVideoXTeaCache": CogVideoXTeaCache,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoSampler": "CogVideo Sampler",
@@ -1002,5 +1031,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoLatentPreview": "CogVideo LatentPreview",
     "CogVideoXTorchCompileSettings": "CogVideo TorchCompileSettings",
     "CogVideoImageEncodeFunInP": "CogVideo ImageEncode FunInP",
-    "CogVideoConcatLatent": "CogVideo Concat Latent",
+    "CogVideoEnhanceAVideo": "CogVideo Enhance-A-Video",
+    "CogVideoXTeaCache": "CogVideoX TeaCache",
     }
