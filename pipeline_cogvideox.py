@@ -383,6 +383,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         image_cond_start_percent: float = 0.0,
         image_cond_end_percent: float = 1.0,
         feta_args: Optional[dict] = None,
+        das_tracking: Optional[dict] = None,
         
     ):
         """
@@ -625,6 +626,24 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         else:
             disable_enhance()
 
+        #das
+        if das_tracking is not None:
+            tracking_maps = das_tracking["tracking_maps"]
+            tracking_image_latents = das_tracking["tracking_image_latents"]
+            das_start_percent = das_tracking["start_percent"]
+            das_end_percent = das_tracking["end_percent"]
+
+            padding_shape = (
+                batch_size,
+                (latents.shape[1] - 1),
+                self.vae_latent_channels,
+                height // self.vae_scale_factor_spatial,
+                width // self.vae_scale_factor_spatial,
+            )
+
+            latent_padding = torch.zeros(padding_shape, device=device, dtype=self.vae_dtype)
+            tracking_image_latents = torch.cat([tracking_image_latents, latent_padding], dim=1)
+
         # reset TeaCache
         if hasattr(self.transformer, 'accumulated_rel_l1_distance'):
             delattr(self.transformer, 'accumulated_rel_l1_distance')
@@ -805,6 +824,15 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                             fun_inpaint_latents = torch.cat([fun_inpaint_mask, fun_inpaint_masked_video_latents], dim=2).to(latents.dtype)
                             latent_model_input = torch.cat([latent_model_input, fun_inpaint_latents], dim=2)
 
+                    if das_tracking is not None and das_start_percent <= current_step_percentage <= das_end_percent:
+                        logger.info("DAS tracking enabled")
+                        latents_tracking_image = torch.cat([tracking_image_latents] * 2) if do_classifier_free_guidance else tracking_image_latents
+                        tracking_maps_input = torch.cat([tracking_maps] * 2) if do_classifier_free_guidance else tracking_maps
+                        tracking_maps_input = torch.cat([tracking_maps_input, latents_tracking_image], dim=2)
+                        del latents_tracking_image
+                    else:
+                        tracking_maps_input = None
+
                     # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                     timestep = t.expand(latent_model_input.shape[0])
 
@@ -836,6 +864,7 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                         controlnet_states=controlnet_states,
                         controlnet_weights=control_weights,
                         video_flow_features=video_flow_features if (tora is not None and tora["start_percent"] <= current_step_percentage <= tora["end_percent"]) else None,
+                        tracking_maps=tracking_maps_input,
                     )[0]
                     noise_pred = noise_pred.float()
                     if isinstance(self.scheduler, CogVideoXDPMScheduler):

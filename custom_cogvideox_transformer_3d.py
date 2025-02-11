@@ -453,6 +453,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         use_learned_positional_embeddings: bool = False,
         patch_bias: bool = True,
         attention_mode: Optional[str] = "sdpa",
+        das_transformer: bool = False,
     ):
         super().__init__()
         inner_dim = num_attention_heads * attention_head_dim
@@ -557,6 +558,41 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         else:
             #CogVideoX-5B
             self.teacache_coefficients = [-1.53880483e+03, 8.43202495e+02, -1.34363087e+02, 7.97131516e+00, -5.23162339e-02]
+
+        #das
+        # Create linear layers for combining hidden states and tracking maps
+        if das_transformer:
+            num_tracking_blocks = 18
+            self.combine_linears = nn.ModuleList(
+                [nn.Linear(inner_dim, inner_dim) for _ in range(num_tracking_blocks)]
+            )
+             # Initialize weights of combine_linears to zero
+            for linear in self.combine_linears:
+                linear.weight.data.zero_()
+                linear.bias.data.zero_()
+
+            # Create transformer blocks for processing tracking maps
+            self.transformer_blocks_copy = nn.ModuleList(
+                [
+                    CogVideoXBlock(
+                        dim=inner_dim,
+                        num_attention_heads=self.config.num_attention_heads,
+                        attention_head_dim=self.config.attention_head_dim,
+                        time_embed_dim=self.config.time_embed_dim,
+                        dropout=self.config.dropout,
+                        activation_fn=self.config.activation_fn,
+                        attention_bias=self.config.attention_bias,
+                        norm_elementwise_affine=self.config.norm_elementwise_affine,
+                        norm_eps=self.config.norm_eps,
+                    )
+                    for _ in range(num_tracking_blocks)
+                ]
+            )
+
+            # For initial combination of hidden states and tracking maps
+            self.initial_combine_linear = nn.Linear(inner_dim, inner_dim)
+            self.initial_combine_linear.weight.data.zero_()
+            self.initial_combine_linear.bias.data.zero_()
         
 
     def _set_gradient_checkpointing(self, module, value=False):
@@ -573,6 +609,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         controlnet_states: torch.Tensor = None,
         controlnet_weights: Optional[Union[float, int, list, np.ndarray, torch.FloatTensor]] = 1.0,
         video_flow_features: Optional[torch.Tensor] = None,
+        tracking_maps: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
@@ -602,13 +639,27 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         #print("hidden_states before patch_embedding", hidden_states.shape) #torch.Size([2, 4, 16, 60, 90])
         
         hidden_states = self.patch_embed(encoder_hidden_states, hidden_states)
-        #print("hidden_states after patch_embedding", hidden_states.shape) #1.5: torch.Size([2, 2926, 3072]) #1.0: torch.Size([2, 5626, 3072])
         hidden_states = self.embedding_dropout(hidden_states)
 
-        text_seq_length = encoder_hidden_states.shape[1]
-        encoder_hidden_states = hidden_states[:, :text_seq_length]
-        hidden_states = hidden_states[:, text_seq_length:]
-        #print("hidden_states after split", hidden_states.shape) #1.5: torch.Size([2, 2700, 3072]) #1.0: torch.Size([2, 5400, 3072])
+        if tracking_maps is not None:
+            # Process tracking maps
+            prompt_embed = encoder_hidden_states.clone()
+            tracking_maps_hidden_states = self.patch_embed(prompt_embed, tracking_maps)
+            tracking_maps_hidden_states = self.embedding_dropout(tracking_maps_hidden_states)
+            del prompt_embed
+
+            text_seq_length = encoder_hidden_states.shape[1]
+            encoder_hidden_states = hidden_states[:, :text_seq_length]
+            hidden_states = hidden_states[:, text_seq_length:]
+            tracking_maps = tracking_maps_hidden_states[:, text_seq_length:]
+
+            # Combine hidden states and tracking maps initially
+            combined = hidden_states + tracking_maps
+            tracking_maps = self.initial_combine_linear(combined)
+        else:
+            text_seq_length = encoder_hidden_states.shape[1]
+            encoder_hidden_states = hidden_states[:, :text_seq_length]
+            hidden_states = hidden_states[:, text_seq_length:]
       
         if self.use_fastercache:
             self.fastercache_counter+=1
@@ -706,6 +757,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 if self.use_teacache:
                     ori_hidden_states = hidden_states.clone()
                     ori_encoder_hidden_states = encoder_hidden_states.clone()
+
                 for i, block in enumerate(self.transformer_blocks):
                     hidden_states, encoder_hidden_states = block(
                         hidden_states=hidden_states,
@@ -730,6 +782,18 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         elif isinstance(controlnet_weights, (float, int)):
                             controlnet_block_weight = controlnet_weights                    
                         hidden_states = hidden_states + controlnet_states_block * controlnet_block_weight
+
+                    #das
+                    if i < len(self.transformer_blocks_copy) and tracking_maps is not None:
+                        tracking_maps, _ = self.transformer_blocks_copy[i](
+                            hidden_states=tracking_maps,
+                            encoder_hidden_states=encoder_hidden_states,
+                            temb=emb,
+                            image_rotary_emb=image_rotary_emb,
+                        )
+                        # Combine hidden states and tracking maps
+                        tracking_maps = self.combine_linears[i](tracking_maps)
+                        hidden_states = hidden_states + tracking_maps
 
                 if self.use_teacache:
                     self.previous_residual = hidden_states - ori_hidden_states

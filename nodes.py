@@ -631,8 +631,9 @@ class CogVideoSampler:
                 "controlnet": ("COGVIDECONTROLNET",),
                 "tora_trajectory": ("TORAFEATURES", ),
                 "fastercache": ("FASTERCACHEARGS", ),
-                "feta_args": ("FETAARGS", ),
-                "teacache_args": ("TEACACHEARGS", ),
+                "feta_args": ("FETAARGS", {"tooltip": "Arguments for Enhance-a-video"} ),
+                "teacache_args": ("TEACACHEARGS",{"tooltip": "Arguments for TeaCache"} ),
+                "das_tracking": ("DASTRACKING", {"tooltip": "Enable tracking for Diffusion As Shader"} ),
             }
         }
 
@@ -642,17 +643,14 @@ class CogVideoSampler:
     CATEGORY = "CogVideoWrapper"
 
     def process(self, model, positive, negative, steps, cfg, seed, scheduler, num_frames, samples=None,
-                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, fastercache=None, feta_args=None, teacache_args=None):
+                denoise_strength=1.0, image_cond_latents=None, context_options=None, controlnet=None, tora_trajectory=None, 
+                das_tracking=None, fastercache=None, feta_args=None, teacache_args=None):
         mm.unload_all_models()
         mm.soft_empty_cache()
 
         model_name = model.get("model_name", "")
-        supports_image_conds = True if (
-        "I2V" in model_name or 
-        "interpolation" in model_name.lower() or 
-        "fun" in model_name.lower() or
-        "img2vid" in model_name.lower()
-        ) else False
+        supports_image_conds = True if model["pipe"].transformer.config.in_channels == 32 else False
+       
         if "fun" in model_name.lower() and not ("pose" in model_name.lower() or "control" in model_name.lower()) and image_cond_latents is not None:
             assert image_cond_latents["mask"] is not None, "For fun inpaint models use CogVideoImageEncodeFunInP"
             fun_mask = image_cond_latents["mask"]
@@ -771,6 +769,7 @@ class CogVideoSampler:
                 image_cond_start_percent=image_cond_start_percent if image_cond_latents is not None else 0.0,
                 image_cond_end_percent=image_cond_end_percent if image_cond_latents is not None else 1.0,
                 feta_args=feta_args,
+                das_tracking=das_tracking,
             )
         if not model["cpu_offloading"] and model["manual_offloading"]:
             pipe.transformer.to(offload_device)
@@ -1033,4 +1032,5 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoImageEncodeFunInP": "CogVideo ImageEncode FunInP",
     "CogVideoEnhanceAVideo": "CogVideo Enhance-A-Video",
     "CogVideoXTeaCache": "CogVideoX TeaCache",
+    "CogVideoDASTrackingEncode": "CogVideo DAS Tracking Encode",
     }

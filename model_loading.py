@@ -712,6 +712,7 @@ class CogVideoXModelLoader:
         device = mm.get_torch_device()
         offload_device = mm.unet_offload_device()
         manual_offloading = True
+        das_transformer = False
         transformer_load_device = device if load_device == "main_device" else offload_device
         mm.soft_empty_cache()
 
@@ -719,9 +720,14 @@ class CogVideoXModelLoader:
 
         model_path = folder_paths.get_full_path_or_raise("diffusion_models", model)
         sd = load_torch_file(model_path, device=transformer_load_device)
+        first_key = next(iter(sd.keys()))
 
         model_type = ""
-        if sd["patch_embed.proj.weight"].shape == (3072, 33, 2, 2):
+        if first_key == "combine_linears.0.bias":
+            log.info("Detected 'Diffusion As Shader' model")
+            model_type = "I2V_5b"
+            das_transformer = True
+        elif sd["patch_embed.proj.weight"].shape == (3072, 33, 2, 2):
             model_type = "fun_5b"
         elif sd["patch_embed.proj.weight"].shape == (3072, 16, 2, 2):
             model_type = "5b"
@@ -770,7 +776,7 @@ class CogVideoXModelLoader:
                     transformer_config["sample_width"] = 300
 
         with init_empty_weights():
-            transformer = CogVideoXTransformer3DModel.from_config(transformer_config, attention_mode=attention_mode)
+            transformer = CogVideoXTransformer3DModel.from_config(transformer_config, attention_mode=attention_mode, das_transformer=das_transformer)
 
         #load weights
         #params_to_keep = {}
