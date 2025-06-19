@@ -384,6 +384,9 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
         image_cond_end_percent: float = 1.0,
         feta_args: Optional[dict] = None,
         das_tracking: Optional[dict] = None,
+        EF_Net_weights: Optional[Union[float, list, torch.FloatTensor]] = 1.0,
+        EF_Net_guidance_start: float = 0.0,
+        EF_Net_guidance_end: float = 1.0,
         
     ):
         """
@@ -853,6 +856,23 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                             else:
                                 controlnet_states = controlnet_states.to(dtype=self.vae_dtype)
 
+                    self.EF_Net_model.to(device)
+                    EF_Net_states = []
+                    if (EF_Net_guidance_start <= current_step_percentage < EF_Net_guidance_end):
+                        # extract EF_Net hidden state
+                        EF_Net_states = self.EF_Net_model(
+                            hidden_states=latent_image_input[:,:,0:16,:,:],
+                            encoder_hidden_states=prompt_embeds,
+                            image_rotary_emb=None,
+                            EF_Net_states=latent_image_input[:,12::,:,:,:],
+                            timestep=timestep,
+                            return_dict=False,
+                        )[0]
+                        if isinstance(EF_Net_states, (tuple, list)):
+                            EF_Net_states = [x.to(dtype=self.transformer.dtype) for x in EF_Net_states]
+                        else:
+                            EF_Net_states = EF_Net_states.to(dtype=self.transformer.dtype)
+
                     # predict noise model_output
                     noise_pred = self.transformer(
                         hidden_states=latent_model_input,
@@ -865,6 +885,8 @@ class CogVideoXPipeline(DiffusionPipeline, CogVideoXLoraLoaderMixin):
                         controlnet_weights=control_weights,
                         video_flow_features=video_flow_features if (tora is not None and tora["start_percent"] <= current_step_percentage <= tora["end_percent"]) else None,
                         tracking_maps=tracking_maps_input,
+                        EF_Net_states=EF_Net_states,
+                        EF_Net_weights=EF_Net_weights,
                     )[0]
                     noise_pred = noise_pred.float()
                     if isinstance(self.scheduler, CogVideoXDPMScheduler):

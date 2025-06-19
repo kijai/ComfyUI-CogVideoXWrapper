@@ -125,6 +125,34 @@ class CogVideoLoraSelectComfy:
         print(cog_loras_list)
         return (cog_loras_list,)
     
+class CogVideoEF_Net:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+               "ef_net": (folder_paths.get_filename_list("diffusion_models"), 
+                {"tooltip": "LORA models are expected to be in ComfyUI/models/loras with .safetensors extension"}),
+                "strength": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.0001, "tooltip": "LORA strength, set to 0.0 to unmerge the LORA"}),
+                "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.0001, "tooltip": "start percent"}),
+                "end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.0001, "tooltip": "end percent"}),
+            },
+        }
+
+    RETURN_TYPES = ("EFNET",)
+    RETURN_NAMES = ("ef_net", )
+    FUNCTION = "efnet"
+    CATEGORY = "CogVideoWrapper"
+    DESCRIPTION = "Select a EF_Net model from ComfyUI/models/diffusion_models"
+
+    def efnet(self, ef_net, strength, start_percent, end_percent):
+        ef_net_dict = {
+            "path": folder_paths.get_full_path("diffusion_models", ef_net),
+            "strength": strength,
+            "start_percent": start_percent,
+            "end_percent": end_percent
+        }
+        return (ef_net_dict,)
+    
 #region DownloadAndLoadCogVideoModel
 class DownloadAndLoadCogVideoModel:
     @classmethod
@@ -177,6 +205,7 @@ class DownloadAndLoadCogVideoModel:
                     "comfy"
                     ], {"default": "sdpa"}),
                 "load_device": (["main_device", "offload_device"], {"default": "main_device"}),
+                "scifi_ef_net": ("EFNET", ),
             }
         }
 
@@ -188,7 +217,7 @@ class DownloadAndLoadCogVideoModel:
 
     def loadmodel(self, model, precision, quantization="disabled", compile="disabled", 
                   enable_sequential_cpu_offload=False, block_edit=None, lora=None, compile_args=None, 
-                  attention_mode="sdpa", load_device="main_device"):
+                  attention_mode="sdpa", load_device="main_device", scifi_ef_net=None):
         
         transformer = None
 
@@ -355,6 +384,14 @@ class DownloadAndLoadCogVideoModel:
 
         if compile_args is not None:
             pipe.transformer.to(memory_format=torch.channels_last)
+
+        if scifi_ef_net is not None:
+            from .scifi.EF_Net import EF_Net
+            EF_Net_model = EF_Net(num_layers=4, downscale_coef=8, in_channels=2, num_attention_heads=48,).requires_grad_(False).eval()
+            sd = load_torch_file(scifi_ef_net["path"])
+            EF_Net_model.load_state_dict(sd, strict=True)
+            pipe.EF_Net_model = EF_Net_model
+            del sd
 
         #fp8
         if quantization == "fp8_e4m3fn" or quantization == "fp8_e4m3fn_fastmode":
@@ -692,6 +729,7 @@ class CogVideoXModelLoader:
                     "fused_sageattn_qk_int8_pv_fp16_triton",
                     "comfy"
                     ], {"default": "sdpa"}),
+                "scifi_ef_net": ("EFNET", ),
             }
         }
 
@@ -701,7 +739,7 @@ class CogVideoXModelLoader:
     CATEGORY = "CogVideoWrapper"
 
     def loadmodel(self, model, base_precision, load_device, enable_sequential_cpu_offload, 
-                  block_edit=None, compile_args=None, lora=None, attention_mode="sdpa", quantization="disabled"):
+                  block_edit=None, compile_args=None, lora=None, attention_mode="sdpa", quantization="disabled", scifi_ef_net=None):
         transformer = None
         if "sage" in attention_mode:
             try:
@@ -859,6 +897,15 @@ class CogVideoXModelLoader:
 
         if compile_args is not None:
             pipe.transformer.to(memory_format=torch.channels_last)
+
+        if scifi_ef_net is not None:
+            from .scifi.EF_Net import EF_Net
+            EF_Net_model = EF_Net(num_layers=4, downscale_coef=8, in_channels=2, num_attention_heads=48,).requires_grad_(False).eval()
+            sd = load_torch_file(scifi_ef_net["path"])
+            EF_Net_model.load_state_dict(sd, strict=True)
+            EF_Net_model.to(base_dtype)
+            pipe.EF_Net_model = EF_Net_model
+            del sd
 
         #quantization
         if quantization == "fp8_e4m3fn" or quantization == "fp8_e4m3fn_fast":
@@ -1138,7 +1185,8 @@ NODE_CLASS_MAPPINGS = {
     "CogVideoLoraSelect": CogVideoLoraSelect,
     "CogVideoXVAELoader": CogVideoXVAELoader,
     "CogVideoXModelLoader": CogVideoXModelLoader,
-    "CogVideoLoraSelectComfy": CogVideoLoraSelectComfy
+    "CogVideoLoraSelectComfy": CogVideoLoraSelectComfy,
+    "CogVideoEF_Net": CogVideoEF_Net
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "DownloadAndLoadCogVideoModel": "(Down)load CogVideo Model",
@@ -1148,5 +1196,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "CogVideoLoraSelect": "CogVideo LoraSelect",
     "CogVideoXVAELoader": "CogVideoX VAE Loader",
     "CogVideoXModelLoader": "CogVideoX Model Loader",
-    "CogVideoLoraSelectComfy": "CogVideo LoraSelect Comfy"
+    "CogVideoLoraSelectComfy": "CogVideo LoraSelect Comfy",
+    "CogVideoEF_Net": "CogVideo EF_Net"
     }

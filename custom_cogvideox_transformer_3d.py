@@ -610,6 +610,8 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         controlnet_weights: Optional[Union[float, int, list, np.ndarray, torch.FloatTensor]] = 1.0,
         video_flow_features: Optional[torch.Tensor] = None,
         tracking_maps: Optional[torch.Tensor] = None,
+        EF_Net_states: torch.Tensor = None,
+        EF_Net_weights: Optional[Union[float, int, list, np.ndarray, torch.FloatTensor]] = 1.0,
         return_dict: bool = True,
     ):
         batch_size, num_frames, channels, height, width = hidden_states.shape
@@ -784,7 +786,7 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         hidden_states = hidden_states + controlnet_states_block * controlnet_block_weight
 
                     #das
-                    if i < len(self.transformer_blocks_copy) and tracking_maps is not None:
+                    if hasattr(self, 'transformer_blocks_copy') and i < len(self.transformer_blocks_copy) and tracking_maps is not None:
                         tracking_maps, _ = self.transformer_blocks_copy[i](
                             hidden_states=tracking_maps,
                             encoder_hidden_states=encoder_hidden_states,
@@ -794,6 +796,19 @@ class CogVideoXTransformer3DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                         # Combine hidden states and tracking maps
                         tracking_maps = self.combine_linears[i](tracking_maps)
                         hidden_states = hidden_states + tracking_maps
+
+                    #Sci-Fi
+                    if (EF_Net_states is not None) and (i < len(EF_Net_states)):
+                        EF_Net_states_block = EF_Net_states[i]
+                        EF_Net_block_weight = 1.0
+                        
+                        if isinstance(EF_Net_weights, (float, int)):
+                            EF_Net_block_weight = EF_Net_weights
+                        else:
+                            EF_Net_block_weight = EF_Net_weights[i]
+                        
+                        
+                        hidden_states = hidden_states + EF_Net_states_block * EF_Net_block_weight
 
                 if self.use_teacache:
                     self.previous_residual = hidden_states - ori_hidden_states

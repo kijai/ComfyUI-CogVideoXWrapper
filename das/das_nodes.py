@@ -171,6 +171,9 @@ class DAS_SpaTracker:
         msk_query = (T_Firsts == 0)
         pred_tracks = pred_tracks[:,:,msk_query.squeeze()]
         pred_visibility = pred_visibility[:,:,msk_query.squeeze()]
+
+        print("pred_tracks: ", pred_tracks.shape)
+        print(pred_tracks[2])
         
         tracking_video = vis.visualize(
                 video=video,
